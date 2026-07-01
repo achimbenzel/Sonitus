@@ -1,0 +1,154 @@
+/* ============================================================
+   SONITUS DITHER STUDIO — design language.
+   Tokens, base styles and reusable pieces (.flag, .panel, .btn,
+   .badge) are taken directly from the provided CONFINIUM
+   Frutiger-Aero dark stylesheet. Do not restyle — extend only.
+   ============================================================ */
+:root{
+  color-scheme:dark;
+
+  /* ===== Deep aqua-navy surfaces ===== */
+  --paper:#071318;                 /* page base (near-black teal) */
+  --paper-2:#0c1c23;              /* slightly lifted */
+  --paper-card:#0f242d;          /* glass card base */
+  --ink:#e8f4f8;                 /* bright aqua-white text */
+  --ink-soft:#a9c4cd;            /* soft aqua-grey */
+  --ink-dim:#6f8b95;             /* muted */
+
+  /* ===== Cyan / teal / aqua palette (glowing on dark) ===== */
+  --sky-blue:#5fc6e8;            /* bright sky cyan */
+  --accent:#46b3cc;             /* aqua teal */
+  --accent-bright:#5aa6e6;      /* water blue */
+  --accent-rgb:70,179,204;
+  --accent-bright-rgb:90,166,230;
+  --sky-blue-rgb:95,198,232;
+
+  /* ===== Bright blue — the one punchy accent ===== */
+  --blue-deep:#7fd4ff;
+  --blue-deep-soft:#4aa8ec;
+
+  /* ===== Accent dots for section labels ===== */
+  --sq-blue:#5fc6e8;
+  --sq-peach:#54d6cf;            /* turquoise */
+  --sq-coral:#5aa6e6;
+  --sq-ink:#7fb4c4;
+
+  --line:#1d3a46;               /* aqua hairline on dark */
+  --line-strong:#2c5566;
+
+  --nav-bg:rgba(9,22,28,.72);
+
+  /* ===== Glow-based shadows & glass highlights ===== */
+  --shadow:0 18px 48px rgba(0,0,0,.55);
+  --win-shadow:0 16px 40px rgba(0,0,0,.6);
+  --gloss-inset:0 1px 0 rgba(255,255,255,.08) inset;
+  --glow:0 0 24px rgba(95,198,232,.28);
+
+  --font-primary:'DM Sans',-apple-system,sans-serif;
+  --font-mono:'JetBrains Mono','Fira Code',monospace;
+
+  --radius-small:8px;
+  --radius-med:12px;
+  --radius-large:18px;
+  --transition-fast:180ms ease;
+  --transition-med:350ms ease;
+  --maxw:1180px;
+}
+
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{font-family:var(--font-primary);color:var(--ink);line-height:1.6;
+  -webkit-font-smoothing:antialiased;overflow:hidden;position:relative;
+  background:var(--paper)}
+a{color:inherit;text-decoration:none}
+a,button{cursor:pointer}
+img{max-width:100%;display:block}
+.mono{font-family:var(--font-mono)}
+
+/* Viewport-locked background wash (from the source theme). */
+body::before{content:"";position:fixed;inset:0;z-index:-2;pointer-events:none;
+  background:
+    linear-gradient(180deg,rgba(9,24,31,.4),rgba(4,12,16,.85)),
+    radial-gradient(120% 90% at 50% -10%,#0e2a35 0%,#0a1d25 45%,#05111600 100%),
+    var(--paper)}
+body::after{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
+  background-image:
+    radial-gradient(closest-side at 50% -8%,rgba(70,179,204,.22),transparent 70%),
+    radial-gradient(rgba(120,200,225,.07) 1px,transparent 1px);
+  background-size:auto,4px 4px;
+  background-repeat:no-repeat,repeat;
+  opacity:.9}
+
+/* ============================================================
+   SECTION LABELS — glossy rounded chip
+   ============================================================ */
+.flag{display:inline-flex;align-items:center;gap:.6rem;font-family:var(--font-mono);
+  font-size:.66rem;font-weight:600;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-soft);
+  margin-bottom:1.5rem;padding:.34rem .7rem;border-radius:999px;
+  border:1px solid var(--line-strong);
+  background:linear-gradient(180deg,rgba(255,255,255,.08),rgba(70,179,204,.09));
+  box-shadow:var(--gloss-inset),0 2px 8px rgba(0,0,0,.35);
+  position:relative;overflow:hidden}
+.flag::before{content:"";width:11px;height:11px;border-radius:50%;flex-shrink:0;
+  background:radial-gradient(circle at 34% 30%,rgba(255,255,255,.95) 0 22%,transparent 23%),var(--sq-ink);
+  box-shadow:0 0 9px rgba(127,180,196,.8)}
+.flag--teal::before{background:radial-gradient(circle at 34% 30%,rgba(255,255,255,.95) 0 22%,transparent 23%),var(--sq-peach);box-shadow:0 0 9px rgba(84,214,207,.8)}
+.flag--cyan::before{background:radial-gradient(circle at 34% 30%,rgba(255,255,255,.95) 0 22%,transparent 23%),var(--sq-coral);box-shadow:0 0 9px rgba(90,166,230,.75)}
+.flag--deep::before{background:radial-gradient(circle at 34% 30%,rgba(255,255,255,.95) 0 22%,transparent 23%),var(--sq-blue);box-shadow:0 0 9px rgba(95,198,232,.8)}
+.flag--ink::before{background:radial-gradient(circle at 34% 30%,rgba(255,255,255,.95) 0 22%,transparent 23%),var(--sq-ink)}
+.flag .pulse{width:7px;height:7px;border-radius:50%;background:var(--accent-bright);animation:pulse 2s infinite}
+.flag::before,.flag .pulse{position:relative;z-index:1}
+.flag::after{content:"";position:absolute;top:0;left:-60%;width:40%;height:100%;z-index:0;
+  background:linear-gradient(100deg,transparent,rgba(255,255,255,.18),transparent);
+  transform:skewX(-18deg);animation:shimmer 4.5s ease-in-out infinite;pointer-events:none}
+@keyframes shimmer{0%{left:-60%}45%,100%{left:130%}}
+
+/* shared glass box */
+.panel{border:1px solid var(--line-strong);border-radius:var(--radius-large);
+  background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(15,36,45,.85));
+  box-shadow:var(--shadow),var(--gloss-inset)}
+
+/* ============================================================
+   BUTTONS / PILLS — glassy aqua bubbles with glow
+   ============================================================ */
+.btn{font-family:var(--font-mono);font-size:.74rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+  display:inline-flex;align-items:center;gap:.6rem;padding:.9rem 1.4rem;border-radius:999px;
+  border:1px solid var(--line-strong);color:var(--ink);
+  background:linear-gradient(180deg,rgba(255,255,255,.08),rgba(70,179,204,.06));
+  box-shadow:var(--gloss-inset),0 6px 16px rgba(0,0,0,.4);
+  transition:transform var(--transition-fast),background var(--transition-fast),
+    color var(--transition-fast),border-color var(--transition-fast),box-shadow var(--transition-fast)}
+.btn:hover{transform:translateY(-2px);border-color:var(--accent);
+  box-shadow:var(--gloss-inset),0 10px 24px rgba(0,0,0,.45),var(--glow)}
+.btn:active{transform:translateY(0)}
+.btn--teal{color:#03161c;border-color:rgba(95,198,232,.6);
+  background:linear-gradient(180deg,#7fdcf4,#46b3cc);
+  box-shadow:var(--gloss-inset),0 6px 18px rgba(70,179,204,.45)}
+.btn--teal:hover{background:linear-gradient(180deg,#93e6fb,#5cc4da);
+  box-shadow:var(--gloss-inset),0 10px 26px rgba(70,179,204,.55)}
+.btn--cyan{color:#021019;border-color:rgba(90,166,230,.6);
+  background:linear-gradient(180deg,#8fc4f4,#5aa6e6);
+  box-shadow:var(--gloss-inset),0 6px 18px rgba(90,166,230,.45)}
+.btn--cyan:hover{background:linear-gradient(180deg,#a3d0f7,#6cb2ec)}
+
+/* App-scale button size (same language, denser controls). */
+.btn--sm{font-size:.62rem;padding:.5rem .85rem;gap:.45rem}
+.btn:disabled{opacity:.4;pointer-events:none}
+
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.7)}}
+
+.badge{display:inline-flex;align-items:center;gap:.5rem;font-family:var(--font-mono);font-size:.6rem;
+  font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#021019;
+  border:1px solid rgba(90,166,230,.6);border-radius:999px;padding:.34rem .7rem;white-space:nowrap;
+  background:linear-gradient(180deg,#8fc4f4,#5aa6e6);
+  box-shadow:var(--gloss-inset),0 3px 12px rgba(90,166,230,.4)}
+.badge .pulse{width:6px;height:6px;border-radius:50%;background:#021019;animation:pulse 2s infinite}
+.badge--muted{color:var(--ink-soft);border-color:var(--line-strong);
+  background:linear-gradient(180deg,rgba(255,255,255,.06),rgba(15,36,45,.8));box-shadow:var(--gloss-inset)}
+
+:focus-visible{outline:3px solid var(--accent-bright);outline-offset:2px}
+
+@media(prefers-reduced-motion:reduce){
+  .badge .pulse,.flag .pulse{animation:none!important}
+  .flag::after{animation:none!important}
+}
