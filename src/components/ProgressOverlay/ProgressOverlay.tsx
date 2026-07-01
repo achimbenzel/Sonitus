@@ -10,7 +10,7 @@ export function ProgressOverlay({ progress, onCancel }: ProgressOverlayProps) {
   return (
     <div className="overlay">
       <div className="overlay-panel">
-        <span className="flag flag--deep">
+        <span className="overlay-label">
           <span className="pulse" />
           {progress.label}
         </span>

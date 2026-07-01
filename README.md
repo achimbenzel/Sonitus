@@ -5,6 +5,11 @@ image sequences and MP4 video frames entirely client-side — no backend, no
 paid APIs. Built as a clean web app (React + Vite + TypeScript) so it can be
 wrapped in Electron later without changes.
 
+**Fully offline:** all fonts (DM Sans, JetBrains Mono — bundled in
+`src/assets/fonts/` with their OFL licenses), icons (lucide-react, bundled
+from npm) and assets are local. The app makes zero external network requests
+at runtime.
+
 ![stack](https://img.shields.io/badge/react-18-5fc6e8) ![stack](https://img.shields.io/badge/vite-5-46b3cc) ![stack](https://img.shields.io/badge/typescript-strict-5aa6e6)
 
 ## Install & run
@@ -25,6 +30,10 @@ direction: source frame → downscale → worker pipeline → cached bitmap → 
 src/
 ├── App.tsx                     orchestrator: state, playback loop, shortcuts
 ├── types/                      all shared TypeScript types + defaults
+├── assets/
+│   ├── sonitos-logo-placeholder.svg   ← replace with the final logo
+│   └── fonts/                  DM Sans + JetBrains Mono + OFL licenses
+├── themes/uiStyles.ts          UI style registry + localStorage persistence
 ├── dither/
 │   ├── algorithms/
 │   │   ├── kernels.ts          error-diffusion kernels (FS, JJN, Stucki, …)
@@ -40,18 +49,30 @@ src/
 │   └── ProcessingEngine.ts     decode LRU, downscale, worker dispatch,
 │                               byte-budgeted processed-frame cache
 ├── components/
-│   ├── TopBar/                 project actions, undo/redo, presets, export
+│   ├── TopBar/                 desktop-style header: file/preset/history actions
 │   ├── Viewport/               canvas, zoom/pan, compare modes, drag&drop
-│   ├── Sidebar/                import + all dither/tone/palette/export controls
+│   ├── Sidebar/                import, dither/tone/palette controls + Export section
 │   ├── Timeline/               thumbnails, scrub, play/FPS/loop, buffer state
-│   └── ProgressOverlay/        import/export progress + cancel
+│   ├── ProgressOverlay/        import/export progress + cancel
+│   ├── modals/                 Settings (UI styles, custom CSS) + About (licenses)
+│   └── ui/                     Select, NumberField, Modal, IconButton primitives
 ├── utils/
 │   ├── imageLoad.ts            image/sequence import, MP4 frame extraction
 │   ├── export.ts               PNG/JPEG/SVG stills, zipped PNG sequences
 │   └── presets.ts              JSON preset export + validated import
 ├── hooks/useSettingsHistory.ts undo/redo with drag coalescing
-└── styles/                     theme.css (provided design tokens) + app.css
+└── styles/
+    ├── fonts.css               local @font-face declarations
+    ├── theme.css               provided design tokens (base style)
+    ├── app.css                 layout + custom controls
+    └── themes.css              Light / Clean / XP style overrides
 ```
+
+**UI styles:** Settings → UI style switches between Aqua Glass (default),
+Aqua Light, Clean (shadcn-like), Retro XP and Custom CSS (live user
+overrides). The choice persists in localStorage; new themes are one registry
+entry in `src/themes/uiStyles.ts` plus one CSS block in
+`src/styles/themes.css`.
 
 **Key design decisions**
 

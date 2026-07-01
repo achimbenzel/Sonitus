@@ -1,9 +1,11 @@
 import { useRef, useState } from 'react'
-import type { DitherSettings, ProjectKind } from '../../types'
+import { Download, FileArchive, Film, ImagePlus, Images } from 'lucide-react'
+import type { DitherSettings, ExportKind, ProjectKind } from '../../types'
+import { DEFAULT_SETTINGS } from '../../types'
 import { ALGORITHMS, isErrorDiffusion } from '../../dither/algorithms/index'
 import { MONO_PRESETS } from '../../dither/palette'
 import { ColorRow, Section, SelectRow, SliderRow, ToggleRow } from './controls'
-import type { ExportKind } from '../TopBar/TopBar'
+import { NumberField } from '../ui/NumberField'
 
 interface SidebarProps {
   settings: DitherSettings
@@ -14,6 +16,7 @@ interface SidebarProps {
   projectKind: ProjectKind
   frameCount: number
   frameSize: { width: number; height: number } | null
+  exporting: boolean
 }
 
 const KIND_LABEL: Record<ProjectKind, string> = {
@@ -22,6 +25,18 @@ const KIND_LABEL: Record<ProjectKind, string> = {
   sequence: 'Image sequence',
   video: 'MP4 video',
 }
+
+const GROUP_LABEL = {
+  'error-diffusion': 'Error Diffusion',
+  ordered: 'Ordered',
+  stochastic: 'Stochastic',
+} as const
+
+const ALGORITHM_OPTIONS = ALGORITHMS.map((a) => ({
+  value: a.id,
+  label: a.label,
+  group: GROUP_LABEL[a.kind],
+}))
 
 export function Sidebar({
   settings,
@@ -32,6 +47,7 @@ export function Sidebar({
   projectKind,
   frameCount,
   frameSize,
+  exporting,
 }: SidebarProps) {
   const imageInput = useRef<HTMLInputElement>(null)
   const sequenceInput = useRef<HTMLInputElement>(null)
@@ -46,30 +62,31 @@ export function Sidebar({
   const procHeight = frameSize
     ? Math.max(1, Math.round((effRes * frameSize.height) / frameSize.width))
     : null
+  const d = DEFAULT_SETTINGS
 
   return (
     <aside className="sidebar">
       {/* ---------- IMPORT ---------- */}
-      <Section label="Import" variant="teal">
+      <Section label="Import">
         <div className="import-btns">
           <button className="btn btn--sm" onClick={() => imageInput.current?.click()}>
-            Upload Image
+            <ImagePlus size={14} /> Image
           </button>
           <button className="btn btn--sm" onClick={() => sequenceInput.current?.click()}>
-            Upload Image Sequence
+            <Images size={14} /> Image Sequence
           </button>
           <button className="btn btn--sm" onClick={() => videoInput.current?.click()}>
-            Upload MP4
+            <Film size={14} /> MP4 Video
           </button>
         </div>
         <div className="inline-field">
           <span className="control-label">MP4 extract FPS</span>
-          <input
-            type="number"
+          <NumberField
+            value={extractFps}
             min={1}
             max={60}
-            value={extractFps}
-            onChange={(e) => setExtractFps(Math.min(60, Math.max(1, Number(e.target.value) || 12)))}
+            onChange={setExtractFps}
+            ariaLabel="MP4 extract FPS"
           />
         </div>
         <div className="import-meta">
@@ -125,36 +142,21 @@ export function Sidebar({
       </Section>
 
       {/* ---------- DITHER ---------- */}
-      <Section label="Dither" variant="deep">
+      <Section label="Dither">
         <SelectRow
           label="Algorithm"
           value={settings.algorithm}
+          options={ALGORITHM_OPTIONS}
           onChange={(v) => update({ algorithm: v as DitherSettings['algorithm'] })}
-        >
-          <optgroup label="Error Diffusion">
-            {ALGORITHMS.filter((a) => a.kind === 'error-diffusion').map((a) => (
-              <option key={a.id} value={a.id}>{a.label}</option>
-            ))}
-          </optgroup>
-          <optgroup label="Ordered">
-            {ALGORITHMS.filter((a) => a.kind === 'ordered').map((a) => (
-              <option key={a.id} value={a.id}>{a.label}</option>
-            ))}
-          </optgroup>
-          <optgroup label="Stochastic">
-            {ALGORITHMS.filter((a) => a.kind === 'stochastic').map((a) => (
-              <option key={a.id} value={a.id}>{a.label}</option>
-            ))}
-          </optgroup>
-        </SelectRow>
-
+        />
         <SliderRow
           label="Resolution"
           value={settings.resolution}
           min={8}
           max={1024}
           step={8}
-          format={(v) => (frameSize && procHeight ? `${Math.min(v, frameSize.width)}×${procHeight}px` : `${v}px`)}
+          resetValue={d.resolution}
+          unit="px"
           onChange={(v) => update({ resolution: v })}
         />
         <ToggleRow
@@ -168,26 +170,20 @@ export function Sidebar({
           value={settings.greyLevels}
           min={2}
           max={16}
+          resetValue={d.greyLevels}
           disabled={!mono}
           onChange={(v) => update({ greyLevels: v })}
-        />
-        <SliderRow
-          label="Pixel scale"
-          value={settings.pixelScale}
-          min={1}
-          max={16}
-          format={(v) => `${v}×`}
-          onChange={(v) => update({ pixelScale: v })}
         />
       </Section>
 
       {/* ---------- TONE ---------- */}
-      <Section label="Tone" variant="cyan">
+      <Section label="Tone">
         <SliderRow
           label="Brightness"
           value={settings.brightness}
           min={-100}
           max={100}
+          resetValue={d.brightness}
           onChange={(v) => update({ brightness: v })}
         />
         <SliderRow
@@ -195,6 +191,7 @@ export function Sidebar({
           value={settings.contrast}
           min={-100}
           max={100}
+          resetValue={d.contrast}
           onChange={(v) => update({ contrast: v })}
         />
         <SliderRow
@@ -203,7 +200,8 @@ export function Sidebar({
           min={0.2}
           max={3}
           step={0.05}
-          format={(v) => v.toFixed(2)}
+          decimals={2}
+          resetValue={d.gamma}
           onChange={(v) => update({ gamma: v })}
         />
         <SliderRow
@@ -211,6 +209,7 @@ export function Sidebar({
           value={settings.threshold}
           min={-100}
           max={100}
+          resetValue={d.threshold}
           onChange={(v) => update({ threshold: v })}
         />
         <SliderRow
@@ -219,7 +218,9 @@ export function Sidebar({
           min={0}
           max={10}
           step={0.5}
-          format={(v) => `${v}px`}
+          decimals={1}
+          unit="px"
+          resetValue={d.preBlur}
           onChange={(v) => update({ preBlur: v })}
         />
         <ToggleRow
@@ -230,24 +231,25 @@ export function Sidebar({
       </Section>
 
       {/* ---------- PALETTE ---------- */}
-      <Section label="Palette" variant="ink">
+      <Section label="Palette">
         <SelectRow
           label="Palette mode"
           value={settings.paletteMode}
+          options={[
+            { value: 'mono', label: 'Mono color' },
+            { value: 'image', label: 'Image colors' },
+          ]}
           onChange={(v) => update({ paletteMode: v as DitherSettings['paletteMode'] })}
-        >
-          <option value="mono">Mono color</option>
-          <option value="image">Image colors</option>
-        </SelectRow>
+        />
 
         <ColorRow
-          label="Highlight color"
+          label="Highlight"
           value={settings.lightColor}
           disabled={!mono}
           onChange={(v) => update({ lightColor: v })}
         />
         <ColorRow
-          label="Shadow color"
+          label="Shadow"
           value={settings.darkColor}
           disabled={!mono}
           onChange={(v) => update({ darkColor: v })}
@@ -277,34 +279,61 @@ export function Sidebar({
           value={settings.paletteSize}
           min={2}
           max={32}
+          resetValue={d.paletteSize}
           disabled={mono}
-          format={(v) => `${v} colors`}
+          unit=" colors"
           onChange={(v) => update({ paletteSize: v })}
         />
       </Section>
 
       {/* ---------- EXPORT ---------- */}
-      <Section label="Export" variant="teal">
-        <div className="export-btns">
-          <button className="btn btn--sm" disabled={frameCount === 0} onClick={() => onExport('png')}>
-            PNG
-          </button>
-          <button className="btn btn--sm" disabled={frameCount === 0} onClick={() => onExport('jpeg')}>
-            JPEG
-          </button>
-          <button className="btn btn--sm" disabled={frameCount === 0} onClick={() => onExport('svg')}>
-            SVG
-          </button>
-          <button className="btn btn--sm" disabled={frameCount < 2} onClick={() => onExport('sequence')}>
-            Sequence
-          </button>
-        </div>
-        <div className="import-meta">
-          Output: <b>
+      <Section label="Export">
+        <SliderRow
+          label="Pixel scale"
+          value={settings.pixelScale}
+          min={1}
+          max={16}
+          resetValue={d.pixelScale}
+          unit="×"
+          onChange={(v) => update({ pixelScale: v })}
+        />
+        <div className="import-meta" style={{ marginTop: 0 }}>
+          Output size: <b>
             {frameSize
               ? `${effRes * settings.pixelScale}×${(procHeight ?? 0) * settings.pixelScale}px`
               : '—'}
           </b>
+        </div>
+        <div className="export-btns">
+          <button
+            className="btn btn--sm"
+            disabled={frameCount === 0 || exporting}
+            onClick={() => onExport('png')}
+          >
+            <Download size={14} /> PNG
+          </button>
+          <button
+            className="btn btn--sm"
+            disabled={frameCount === 0 || exporting}
+            onClick={() => onExport('jpeg')}
+          >
+            <Download size={14} /> JPEG
+          </button>
+          <button
+            className="btn btn--sm"
+            disabled={frameCount === 0 || exporting}
+            onClick={() => onExport('svg')}
+          >
+            <Download size={14} /> SVG
+          </button>
+          <button
+            className="btn btn--sm"
+            disabled={frameCount < 2 || exporting}
+            onClick={() => onExport('sequence')}
+            title="All frames as PNG files in a ZIP"
+          >
+            <FileArchive size={14} /> Sequence
+          </button>
         </div>
       </Section>
     </aside>

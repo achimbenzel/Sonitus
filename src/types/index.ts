@@ -96,6 +96,8 @@ export interface SourceFrame {
 
 export type CompareMode = 'dithered' | 'original' | 'split'
 
+export type ExportKind = 'png' | 'jpeg' | 'svg' | 'sequence'
+
 /** Plain-object image so the pipeline is usable both on the main
  *  thread and inside workers (and in node-based tests). */
 export interface RawImage {

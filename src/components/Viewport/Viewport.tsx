@@ -10,13 +10,14 @@
    ============================================================ */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { Maximize } from 'lucide-react'
 import type { CompareMode, SourceFrame } from '../../types'
+import logoUrl from '../../assets/sonitos-logo-placeholder.svg'
 
 interface ViewportProps {
   frame: SourceFrame | null
   processed: ImageBitmap | null
   original: ImageBitmap | null
-  processing: boolean
   compare: CompareMode
   setCompare: (m: CompareMode) => void
   holdOriginal: boolean
@@ -49,7 +50,6 @@ export function Viewport({
   frame,
   processed,
   original,
-  processing,
   compare,
   setCompare,
   holdOriginal,
@@ -308,7 +308,9 @@ export function Viewport({
       {frame && (
         <div className="viewport-toolbar">
           <div className="vp-chipgroup">
-            <button className="vp-chip" onClick={fit} title="Fit to screen (0)">Fit</button>
+            <button className="vp-chip vp-chip--icon" onClick={fit} title="Fit / reset view (0)">
+              <Maximize size={12} /> Fit
+            </button>
             <button className="vp-chip" onClick={setZoom100} title="Actual pixels (1)">100%</button>
             <span className="vp-readout">{zoomPct}%</span>
           </div>
@@ -349,12 +351,6 @@ export function Viewport({
         </div>
       )}
 
-      {frame && processing && (
-        <span className="vp-processing">
-          <span className="pulse" /> Processing
-        </span>
-      )}
-
       {frame && (
         <span className="viewport-hint">wheel zoom · drag pan · hold C = original</span>
       )}
@@ -362,7 +358,8 @@ export function Viewport({
       {!frame && (
         <div className={`vp-empty${dragOver ? ' dragover' : ''}`}>
           <div className="vp-empty-inner">
-            <span className="flag flag--teal">Sonitus Dither Studio</span>
+            <img src={logoUrl} alt="" className="vp-empty-logo" />
+            <span className="vp-empty-title">Sonitus Dither Studio</span>
             <p>
               Drop an image, image sequence or MP4 here
               <br />

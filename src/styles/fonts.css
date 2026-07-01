@@ -1,0 +1,55 @@
+/* ============================================================
+   Local fonts — no external requests. Both families ship in
+   src/assets/fonts/ with their SIL OFL 1.1 license texts.
+   System fallbacks are declared in the --font-* tokens so the
+   app stays usable even if the font files are removed.
+   ============================================================ */
+
+/* DM Sans — variable font, covers weights 100–1000. OFL 1.1. */
+@font-face {
+  font-family: 'DM Sans';
+  src:
+    local('DM Sans'),
+    url('../assets/fonts/DMSans-Variable.ttf') format('truetype-variations');
+  font-weight: 100 1000;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* JetBrains Mono — static weights used by the UI. OFL 1.1. */
+@font-face {
+  font-family: 'JetBrains Mono';
+  src:
+    local('JetBrains Mono'),
+    url('../assets/fonts/JetBrainsMono-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  src:
+    local('JetBrains Mono Medium'),
+    url('../assets/fonts/JetBrainsMono-Medium.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  src:
+    local('JetBrains Mono SemiBold'),
+    url('../assets/fonts/JetBrainsMono-SemiBold.woff2') format('woff2');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  src:
+    local('JetBrains Mono Bold'),
+    url('../assets/fonts/JetBrainsMono-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}

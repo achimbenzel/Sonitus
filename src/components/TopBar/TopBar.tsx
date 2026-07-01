@@ -1,19 +1,36 @@
-import { useEffect, useRef, useState } from 'react'
+/* ============================================================
+   Header bar: desktop-software style. Brand on the left, grouped
+   icon actions (file / preset / history) and Settings + About on
+   the right. Export lives in the sidebar, not here.
+   ============================================================ */
 
-export type ExportKind = 'png' | 'jpeg' | 'svg' | 'sequence'
+import { useRef } from 'react'
+import {
+  FilePlus2,
+  FolderOpen,
+  FolderPlus,
+  Info,
+  Redo2,
+  Save,
+  Settings as SettingsIcon,
+  FileInput,
+  Undo2,
+} from 'lucide-react'
+import { IconButton } from '../ui/IconButton'
+import logoUrl from '../../assets/sonitos-logo-placeholder.svg'
 
 interface TopBarProps {
   canUndo: boolean
   canRedo: boolean
   onUndo: () => void
   onRedo: () => void
+  onNewFile: () => void
   onNewProject: () => void
+  onOpen: () => void
   onSavePreset: () => void
   onLoadPreset: (file: File) => void
-  onExport: (kind: ExportKind) => void
-  hasFrame: boolean
-  hasSequence: boolean
-  busy: boolean
+  onOpenSettings: () => void
+  onOpenAbout: () => void
 }
 
 export function TopBar({
@@ -21,67 +38,44 @@ export function TopBar({
   canRedo,
   onUndo,
   onRedo,
+  onNewFile,
   onNewProject,
+  onOpen,
   onSavePreset,
   onLoadPreset,
-  onExport,
-  hasFrame,
-  hasSequence,
-  busy,
+  onOpenSettings,
+  onOpenAbout,
 }: TopBarProps) {
-  const [exportOpen, setExportOpen] = useState(false)
-  const menuRef = useRef<HTMLDivElement>(null)
   const presetInputRef = useRef<HTMLInputElement>(null)
-
-  useEffect(() => {
-    if (!exportOpen) return
-    const close = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setExportOpen(false)
-    }
-    window.addEventListener('mousedown', close)
-    return () => window.removeEventListener('mousedown', close)
-  }, [exportOpen])
 
   return (
     <header className="topbar">
       <div className="topbar-brand">
-        <span className="dot" />
-        SONITUS <span className="sub">/ DITHER STUDIO</span>
+        <img src={logoUrl} alt="" className="topbar-logo" />
+        SONITUS <span className="sub">DITHER STUDIO</span>
       </div>
 
-      <div className="topbar-group">
-        <button className="btn btn--sm" onClick={onNewProject} title="Clear project">
-          New
-        </button>
-        <button
-          className="btn btn--sm"
-          onClick={onUndo}
-          disabled={!canUndo}
-          title="Undo (Ctrl+Z)"
-        >
-          ↩ Undo
-        </button>
-        <button
-          className="btn btn--sm"
-          onClick={onRedo}
-          disabled={!canRedo}
-          title="Redo (Ctrl+Shift+Z)"
-        >
-          Redo ↪
-        </button>
+      <div className="topbar-group" role="toolbar" aria-label="File">
+        <IconButton label="New file — clear the canvas" onClick={onNewFile}>
+          <FilePlus2 size={15} />
+        </IconButton>
+        <IconButton label="New project — clear canvas and reset all settings" onClick={onNewProject}>
+          <FolderPlus size={15} />
+        </IconButton>
+        <IconButton label="Open / import…" onClick={onOpen}>
+          <FolderOpen size={15} />
+        </IconButton>
       </div>
 
-      <div className="topbar-group">
-        <button className="btn btn--sm" onClick={onSavePreset} title="Save all parameters as JSON">
-          Save Preset
-        </button>
-        <button
-          className="btn btn--sm"
-          onClick={() => presetInputRef.current?.click()}
-          title="Load parameters from JSON"
-        >
-          Load Preset
-        </button>
+      <span className="topbar-sep" />
+
+      <div className="topbar-group" role="toolbar" aria-label="Presets">
+        <IconButton label="Save preset (JSON)" onClick={onSavePreset}>
+          <Save size={15} />
+        </IconButton>
+        <IconButton label="Load preset (JSON)" onClick={() => presetInputRef.current?.click()}>
+          <FileInput size={15} />
+        </IconButton>
         <input
           ref={presetInputRef}
           type="file"
@@ -93,45 +87,28 @@ export function TopBar({
             e.target.value = ''
           }}
         />
+      </div>
 
-        <div className="menu-wrap" ref={menuRef}>
-          <button
-            className="btn btn--sm btn--teal"
-            onClick={() => setExportOpen((v) => !v)}
-            disabled={!hasFrame}
-          >
-            Export ▾
-          </button>
-          {exportOpen && (
-            <div className="menu">
-              <button onClick={() => { setExportOpen(false); onExport('png') }}>
-                PNG <span className="menu-hint">current frame</span>
-              </button>
-              <button onClick={() => { setExportOpen(false); onExport('jpeg') }}>
-                JPEG <span className="menu-hint">current frame</span>
-              </button>
-              <button onClick={() => { setExportOpen(false); onExport('svg') }}>
-                SVG <span className="menu-hint">vector rects</span>
-              </button>
-              <button
-                disabled={!hasSequence}
-                onClick={() => { setExportOpen(false); onExport('sequence') }}
-              >
-                PNG Sequence <span className="menu-hint">zip, all frames</span>
-              </button>
-            </div>
-          )}
-        </div>
+      <span className="topbar-sep" />
 
-        <span className="topbar-status">
-          {busy ? (
-            <>
-              <span className="pulse" /> Processing
-            </>
-          ) : (
-            'Ready'
-          )}
-        </span>
+      <div className="topbar-group" role="toolbar" aria-label="History">
+        <IconButton label="Undo (Ctrl+Z)" onClick={onUndo} disabled={!canUndo}>
+          <Undo2 size={15} />
+        </IconButton>
+        <IconButton label="Redo (Ctrl+Shift+Z)" onClick={onRedo} disabled={!canRedo}>
+          <Redo2 size={15} />
+        </IconButton>
+      </div>
+
+      <span className="topbar-spacer" />
+
+      <div className="topbar-group" role="toolbar" aria-label="Application">
+        <IconButton label="Settings" onClick={onOpenSettings}>
+          <SettingsIcon size={15} />
+        </IconButton>
+        <IconButton label="About" onClick={onOpenAbout}>
+          <Info size={15} />
+        </IconButton>
       </div>
     </header>
   )

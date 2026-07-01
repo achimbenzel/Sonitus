@@ -1,0 +1,21 @@
+<!--
+  SONITOS LOGO PLACEHOLDER
+  Replace this file with the final Sonitos logo (keep the same
+  filename, or update the imports in:
+    src/components/TopBar/TopBar.tsx
+    src/components/modals/AboutModal.tsx
+    src/components/Viewport/Viewport.tsx
+  A square-ish viewBox works best; the app renders it at 18–56 px.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <circle cx="32" cy="32" r="28" fill="#0f242d" stroke="#46b3cc" stroke-width="3"/>
+  <circle cx="24" cy="22" r="6" fill="#e8f4f8" opacity="0.9"/>
+  <!-- simple dither-dot motif -->
+  <g fill="#5fc6e8">
+    <circle cx="20" cy="40" r="3.2"/>
+    <circle cx="30" cy="44" r="2.6"/>
+    <circle cx="40" cy="40" r="2.0"/>
+    <circle cx="46" cy="32" r="1.6"/>
+    <circle cx="42" cy="22" r="1.2"/>
+  </g>
+</svg>

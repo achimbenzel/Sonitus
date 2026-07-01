@@ -1,11 +1,14 @@
 /* ============================================================
    Timeline: thumbnails, scrubbing, playback controls, FPS, loop
    and per-frame buffer state (teal underline = processed & cached
-   for the current settings).
+   for the current settings). Background work is signalled only by
+   a small unobtrusive dot — no text during playback.
    ============================================================ */
 
 import { useEffect, useRef } from 'react'
+import { Pause, Play } from 'lucide-react'
 import type { SourceFrame } from '../../types'
+import { NumberField } from '../ui/NumberField'
 
 interface TimelineProps {
   frames: SourceFrame[]
@@ -65,11 +68,7 @@ export function Timeline({
     <div className="timeline">
       <div className="timeline-controls">
         <button className="tl-play" onClick={onTogglePlay} title="Play / pause (Space)">
-          {playing ? (
-            <svg viewBox="0 0 16 16"><rect x="3" y="2" width="4" height="12" rx="1" /><rect x="9" y="2" width="4" height="12" rx="1" /></svg>
-          ) : (
-            <svg viewBox="0 0 16 16"><path d="M4 2.5v11a.6.6 0 0 0 .92.5l9-5.5a.6.6 0 0 0 0-1l-9-5.5a.6.6 0 0 0-.92.5z" /></svg>
-          )}
+          {playing ? <Pause size={15} fill="currentColor" /> : <Play size={15} fill="currentColor" />}
         </button>
 
         <span className="tl-counter">
@@ -77,16 +76,10 @@ export function Timeline({
           <span> / {String(frames.length).padStart(3, '0')}</span>
         </span>
 
-        <label className="tl-field">
+        <span className="tl-field">
           FPS
-          <input
-            type="number"
-            min={1}
-            max={60}
-            value={fps}
-            onChange={(e) => setFps(Math.min(60, Math.max(1, Number(e.target.value) || 1)))}
-          />
-        </label>
+          <NumberField value={fps} min={1} max={60} onChange={setFps} ariaLabel="Playback FPS" />
+        </span>
 
         <label className="toggle tl-field" style={{ cursor: 'pointer' }}>
           Loop
@@ -94,11 +87,12 @@ export function Timeline({
           <span className="track" />
         </label>
 
-        {buffering && (
-          <span className="tl-buffering">
-            <span className="pulse" /> Buffering
-          </span>
-        )}
+        {/* Subtle background-work indicator — dot only, no text. */}
+        <span
+          className={`tl-workdot${buffering ? ' on' : ''}`}
+          title={buffering ? 'Buffering frames…' : undefined}
+          aria-hidden={!buffering}
+        />
       </div>
 
       <div

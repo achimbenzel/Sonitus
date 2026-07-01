@@ -1,16 +1,25 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { CompareMode, ProgressState, ProjectKind, SourceFrame } from './types'
+import type {
+  CompareMode,
+  ExportKind,
+  ProgressState,
+  ProjectKind,
+  SourceFrame,
+} from './types'
 import { DEFAULT_SETTINGS } from './types'
 import { PRIORITY, ProcessingEngine } from './engine/ProcessingEngine'
 import { useSettingsHistory } from './hooks/useSettingsHistory'
 import { buildImageFrames, extractVideoFrames } from './utils/imageLoad'
 import { exportSequence, exportStill, exportSvg, type SequenceExportHandle } from './utils/export'
 import { exportPreset, parsePreset } from './utils/presets'
-import { TopBar, type ExportKind } from './components/TopBar/TopBar'
+import { applyUiStyle, loadUiStyle } from './themes/uiStyles'
+import { TopBar } from './components/TopBar/TopBar'
 import { Sidebar } from './components/Sidebar/Sidebar'
 import { Viewport } from './components/Viewport/Viewport'
 import { Timeline } from './components/Timeline/Timeline'
 import { ProgressOverlay } from './components/ProgressOverlay/ProgressOverlay'
+import { SettingsModal } from './components/modals/SettingsModal'
+import { AboutModal } from './components/modals/AboutModal'
 
 interface Toast {
   message: string
@@ -36,10 +45,13 @@ export default function App() {
   const [holdOriginal, setHoldOriginal] = useState(false)
   const [processed, setProcessed] = useState<ImageBitmap | null>(null)
   const [original, setOriginal] = useState<ImageBitmap | null>(null)
-  const [previewBusy, setPreviewBusy] = useState(false)
   const [progress, setProgress] = useState<ProgressState | null>(null)
   const [toast, setToast] = useState<Toast | null>(null)
   const [, setBufferTick] = useState(0)
+  const [uiStyle, setUiStyle] = useState(loadUiStyle)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [aboutOpen, setAboutOpen] = useState(false)
+  const openInputRef = useRef<HTMLInputElement>(null)
 
   const hash = useMemo(() => engine.settingsHash(settings), [engine, settings])
   const frame = frames[current] ?? null
@@ -47,6 +59,12 @@ export default function App() {
   /* Refs mirroring state, for callbacks that must read latest values. */
   const stateRef = useRef({ settings, frames, current, hash, playing, fps, loop })
   stateRef.current = { settings, frames, current, hash, playing, fps, loop }
+
+  /* ---------- UI style ---------- */
+
+  useEffect(() => {
+    applyUiStyle(uiStyle)
+  }, [uiStyle])
 
   const showToast = useCallback((message: string, error = false) => {
     setToast({ message, error })
@@ -63,7 +81,6 @@ export default function App() {
     const f = fr[cur]
     if (!f) {
       setProcessed(null)
-      setPreviewBusy(false)
       return
     }
     if (previewInFlight.current) {
@@ -71,7 +88,6 @@ export default function App() {
       return
     }
     previewInFlight.current = true
-    setPreviewBusy(true)
     engine
       .getProcessed(f, s, PRIORITY.PREVIEW)
       .then((bmp) => {
@@ -87,8 +103,6 @@ export default function App() {
         if (previewDirty.current) {
           previewDirty.current = false
           kickPreview()
-        } else {
-          setPreviewBusy(false)
         }
       })
   }, [engine])
@@ -241,10 +255,26 @@ export default function App() {
     [importImages, importVideo],
   )
 
-  const newProject = useCallback(() => {
-    if (frames.length > 0 && !window.confirm('Clear the current project?')) return
+  /* New File: clear the canvas/source, keep settings. */
+  const newFile = useCallback(() => {
+    if (frames.length > 0 && !window.confirm('Clear the current source?')) return
     loadFrames([], 'none')
   }, [frames.length, loadFrames])
+
+  /* New Project: clear source AND reset every parameter. */
+  const newProject = useCallback(() => {
+    if (
+      (frames.length > 0 || canUndo) &&
+      !window.confirm('Start a new project? This clears the source and resets all settings.')
+    ) {
+      return
+    }
+    loadFrames([], 'none')
+    replaceAll(DEFAULT_SETTINGS)
+    setFps(12)
+    setLoop(true)
+    setCompare('dithered')
+  }, [frames.length, canUndo, loadFrames, replaceAll])
 
   /* ---------- export ---------- */
 
@@ -367,13 +397,27 @@ export default function App() {
         canRedo={canRedo}
         onUndo={undo}
         onRedo={redo}
+        onNewFile={newFile}
         onNewProject={newProject}
+        onOpen={() => openInputRef.current?.click()}
         onSavePreset={savePreset}
         onLoadPreset={loadPreset}
-        onExport={handleExport}
-        hasFrame={frame !== null}
-        hasSequence={frames.length > 1}
-        busy={previewBusy}
+        onOpenSettings={() => setSettingsOpen(true)}
+        onOpenAbout={() => setAboutOpen(true)}
+      />
+
+      {/* Header "Open / Import" — accepts images, sequences and MP4. */}
+      <input
+        ref={openInputRef}
+        type="file"
+        multiple
+        accept="image/png,image/jpeg,video/mp4,.png,.jpg,.jpeg,.mp4"
+        style={{ display: 'none' }}
+        onChange={(e) => {
+          const files = Array.from(e.target.files ?? [])
+          if (files.length > 0) onDropFiles(files)
+          e.target.value = ''
+        }}
       />
 
       <div className="app-main">
@@ -381,7 +425,6 @@ export default function App() {
           frame={frame}
           processed={processed}
           original={original}
-          processing={previewBusy}
           compare={compare}
           setCompare={setCompare}
           holdOriginal={holdOriginal}
@@ -396,6 +439,7 @@ export default function App() {
           projectKind={projectKind}
           frameCount={frames.length}
           frameSize={frame ? { width: frame.width, height: frame.height } : null}
+          exporting={progress !== null}
         />
       </div>
 
@@ -417,6 +461,18 @@ export default function App() {
 
       {progress && <ProgressOverlay progress={progress} onCancel={cancelProgress} />}
       {toast && <div className={`toast${toast.error ? ' error' : ''}`}>{toast.message}</div>}
+
+      {settingsOpen && (
+        <SettingsModal
+          uiStyle={uiStyle}
+          onSelectStyle={(id) => {
+            setUiStyle(id)
+            applyUiStyle(id)
+          }}
+          onClose={() => setSettingsOpen(false)}
+        />
+      )}
+      {aboutOpen && <AboutModal onClose={() => setAboutOpen(false)} />}
     </div>
   )
 }
