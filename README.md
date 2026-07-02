@@ -34,6 +34,7 @@ src/
 │   ├── sonitos-logo-placeholder.svg   ← replace with the final logo
 │   └── fonts/                  DM Sans + JetBrains Mono + OFL licenses
 ├── themes/uiStyles.ts          UI style registry + localStorage persistence
+├── keyframes/keyframes.ts      keyframe storage, interpolation, navigation
 ├── dither/
 │   ├── algorithms/
 │   │   ├── kernels.ts          error-diffusion kernels (FS, JJN, Stucki, …)
@@ -52,13 +53,15 @@ src/
 │   ├── TopBar/                 desktop-style header: file/preset/history actions
 │   ├── Viewport/               canvas, zoom/pan, compare modes, drag&drop
 │   ├── Sidebar/                import, dither/tone/palette controls + Export section
-│   ├── Timeline/               thumbnails, scrub, play/FPS/loop, buffer state
+│   ├── Timeline/               always-visible ruler timeline: ticks, playhead,
+│   │                           scrub, Ctrl+wheel zoom, keyframe markers, thumbs
 │   ├── ProgressOverlay/        import/export progress + cancel
 │   ├── modals/                 Settings (UI styles, custom CSS) + About (licenses)
 │   └── ui/                     Select, NumberField, Modal, IconButton primitives
 ├── utils/
 │   ├── imageLoad.ts            image/sequence import, MP4 frame extraction
 │   ├── export.ts               PNG/JPEG/SVG stills, zipped PNG sequences
+│   ├── videoExport.ts          MP4 (WebCodecs + mp4-muxer) and GIF (gifenc)
 │   └── presets.ts              JSON preset export + validated import
 ├── hooks/useSettingsHistory.ts undo/redo with drag coalescing
 └── styles/
@@ -117,13 +120,24 @@ invert, 2–16 grey levels, output pixel scale 1–16×.
 (B/W, off-white/black, green/black, orange/black, blue/cream) and multi-level
 ramps; image mode with median-cut palette extraction (2–32 colors).
 
-**Timeline** — thumbnails with frame numbers, click/drag scrubbing, play/pause,
-FPS input, loop toggle, buffered-frame indicators, real-time playback from the
-processed-frame cache.
+**Timeline** — always visible (default 12 FPS × 5 s when no sequence is
+loaded); ruler with second/frame ticks and adaptive labels, playhead with
+scrubbing, Ctrl+wheel zoom (cursor-anchored) and horizontal wheel scroll,
+compact tiled thumbnails for sequences, keyframe diamonds, buffered-range
+strip, loop toggle, FPS + duration inputs.
+
+**Keyframes** — animate resolution, brightness, contrast, gamma, threshold,
+pre-blur, grey levels, pixel scale and both mono palette colors. Diamond
+toggles next to each parameter, prev/next navigation (per parameter and
+timeline-wide), linear interpolation for numbers, RGB interpolation for
+colors. Editing an animated parameter writes a keyframe at the playhead;
+un-keyframed parameters behave exactly as before.
 
 **Export** — PNG / JPEG / SVG stills (SVG merges horizontal runs into per-color
-paths), zipped PNG sequence export with progress + cancel. All exports apply
-the pixel scale multiplier.
+paths), zipped PNG sequence export, MP4 (H.264 via WebCodecs, VP9-in-MP4
+fallback) and animated GIF. Animated exports bake in timeline duration, FPS
+and keyframed parameters. All exports apply the pixel scale multiplier and
+report progress inline in the sidebar Export section (cancellable).
 
 **Presets** — full parameter set (incl. FPS/loop) exports as JSON; import is
 validated field-by-field with clear error messages.
@@ -134,6 +148,15 @@ validated field-by-field with clear error messages.
 while typing in inputs.
 
 ## Limitations / future work
+
+- **MP4 export needs WebCodecs H.264** (present in regular Chrome). Chromium
+  builds without proprietary codecs fall back to VP9-in-MP4, which plays in
+  Chrome/VLC but not in every desktop player.
+- **GIF export re-quantizes each frame to ≤256 colors** — lossless for mono
+  palettes, near-lossless for image-palette mode; large resolutions produce
+  large files.
+- **Keyframes are not yet stored in presets or undo history** — preset JSON
+  covers the base parameters only, and Ctrl+Z does not revert keyframe edits.
 
 - **MP4 extraction is seek-based** (fixed FPS you choose at import), not a
   demuxer — it's codec-agnostic and reliable in Chrome, but doesn't recover

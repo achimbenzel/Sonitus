@@ -1,8 +1,10 @@
 /* Sidebar control primitives: clean section headings, sliders with
-   editable values + double-click reset, toggles, selects, colors. */
+   editable values + double-click reset, keyframe controls, toggles,
+   selects. */
 
 import { useRef, useState } from 'react'
 import type { ReactNode } from 'react'
+import { ChevronLeft, ChevronRight, Diamond } from 'lucide-react'
 import { Select, type SelectOption } from '../ui/Select'
 
 export function Section({ label, children }: { label: string; children: ReactNode }) {
@@ -13,6 +15,63 @@ export function Section({ label, children }: { label: string; children: ReactNod
     </section>
   )
 }
+
+/* ---------- keyframe control (diamond + prev/next) ---------- */
+
+export interface KfControlProps {
+  /** Parameter has at least one keyframe somewhere. */
+  has: boolean
+  /** A keyframe sits exactly on the current frame. */
+  at: boolean
+  canPrev: boolean
+  canNext: boolean
+  onToggle: () => void
+  onPrev: () => void
+  onNext: () => void
+}
+
+export function KeyframeControl({ has, at, canPrev, canNext, onToggle, onPrev, onNext }: KfControlProps) {
+  return (
+    <span className={`kfctl${has ? ' has' : ''}`}>
+      {has && (
+        <button
+          type="button"
+          className="kf-nav"
+          disabled={!canPrev}
+          onClick={onPrev}
+          title="Previous keyframe"
+          aria-label="Previous keyframe"
+        >
+          <ChevronLeft size={10} strokeWidth={3} />
+        </button>
+      )}
+      <button
+        type="button"
+        className={`kf-diamond${at ? ' at' : ''}`}
+        onClick={onToggle}
+        title={at ? 'Remove keyframe at current frame' : 'Add keyframe at current frame'}
+        aria-label={at ? 'Remove keyframe' : 'Add keyframe'}
+        aria-pressed={at}
+      >
+        <Diamond size={9} strokeWidth={2.5} fill={at ? 'currentColor' : 'none'} />
+      </button>
+      {has && (
+        <button
+          type="button"
+          className="kf-nav"
+          disabled={!canNext}
+          onClick={onNext}
+          title="Next keyframe"
+          aria-label="Next keyframe"
+        >
+          <ChevronRight size={10} strokeWidth={3} />
+        </button>
+      )}
+    </span>
+  )
+}
+
+/* ---------- slider ---------- */
 
 interface SliderRowProps {
   label: string
@@ -27,6 +86,8 @@ interface SliderRowProps {
   unit?: string
   /** Decimals used for display. */
   decimals?: number
+  /** Optional keyframe control rendered next to the label. */
+  kf?: KfControlProps
   onChange: (v: number) => void
 }
 
@@ -40,6 +101,7 @@ export function SliderRow({
   disabled,
   unit,
   decimals = 0,
+  kf,
   onChange,
 }: SliderRowProps) {
   const [editing, setEditing] = useState(false)
@@ -65,6 +127,7 @@ export function SliderRow({
   return (
     <div className={`control${disabled ? ' disabled' : ''}`}>
       <div className="control-head">
+        {kf && <KeyframeControl {...kf} />}
         <span className="control-label">{label}</span>
         <span className="control-valuebox">
           {editing ? (
@@ -144,31 +207,6 @@ export function SelectRow({ label, value, options, disabled, onChange }: {
         <span className="control-label">{label}</span>
       </div>
       <Select value={value} options={options} onChange={onChange} disabled={disabled} ariaLabel={label} />
-    </div>
-  )
-}
-
-export function ColorRow({ label, value, disabled, onChange }: {
-  label: string
-  value: string
-  disabled?: boolean
-  onChange: (v: string) => void
-}) {
-  return (
-    <div className={`control color-row${disabled ? ' disabled' : ''}`}>
-      <span className="control-label">{label}</span>
-      <span className="color-well">
-        <span className="color-hex">{value.toUpperCase()}</span>
-        <span className="color-swatch" style={{ background: value }}>
-          <input
-            type="color"
-            value={value}
-            disabled={disabled}
-            onChange={(e) => onChange(e.target.value)}
-            aria-label={label}
-          />
-        </span>
-      </span>
     </div>
   )
 }

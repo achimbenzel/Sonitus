@@ -19,9 +19,11 @@ interface SelectProps {
   onChange: (value: string) => void
   disabled?: boolean
   ariaLabel?: string
+  /** Small inline variant (e.g. color picker mode switch). */
+  compact?: boolean
 }
 
-export function Select({ value, options, onChange, disabled, ariaLabel }: SelectProps) {
+export function Select({ value, options, onChange, disabled, ariaLabel, compact }: SelectProps) {
   const [open, setOpen] = useState(false)
   const [active, setActive] = useState(-1)
   const rootRef = useRef<HTMLDivElement>(null)
@@ -113,7 +115,7 @@ export function Select({ value, options, onChange, disabled, ariaLabel }: Select
   })
 
   return (
-    <div className={`select${disabled ? ' disabled' : ''}`} ref={rootRef}>
+    <div className={`select${compact ? ' select--compact' : ''}${disabled ? ' disabled' : ''}`} ref={rootRef}>
       <button
         type="button"
         className={`select-trigger${open ? ' open' : ''}`}

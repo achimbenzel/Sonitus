@@ -10,8 +10,10 @@
    localStorage into a dedicated <style> element.
    ============================================================ */
 
+export type UiStyleId = 'default' | 'light' | 'clean' | 'xp' | 'signal' | 'custom'
+
 export interface UiStyleDef {
-  id: string
+  id: UiStyleId
   label: string
   description: string
 }
@@ -34,13 +36,18 @@ export const UI_STYLES: UiStyleDef[] = [
   },
   {
     id: 'xp',
-    label: 'Retro XP',
-    description: 'Windows XP inspired silver & blue.',
+    label: 'Experience',
+    description: 'Early-2000s desktop silver & blue.',
+  },
+  {
+    id: 'signal',
+    label: 'Signal Core',
+    description: 'Console dashboard: dark panels, lime glow.',
   },
   {
     id: 'custom',
     label: 'Custom CSS',
-    description: 'Default style plus your own CSS overrides.',
+    description: 'Default style plus your own CSS file.',
   },
 ]
 
@@ -48,17 +55,23 @@ const STYLE_KEY = 'sonitus.uiStyle'
 const CUSTOM_CSS_KEY = 'sonitus.customCss'
 const CUSTOM_STYLE_EL_ID = 'sonitus-custom-css'
 
-export function loadUiStyle(): string {
+export function loadUiStyle(): UiStyleId {
   const stored = localStorage.getItem(STYLE_KEY)
-  return stored && UI_STYLES.some((s) => s.id === stored) ? stored : 'default'
+  return stored && UI_STYLES.some((s) => s.id === stored) ? (stored as UiStyleId) : 'default'
 }
 
+/** The cached custom CSS text (loaded from a user file), if any. */
 export function loadCustomCss(): string {
   return localStorage.getItem(CUSTOM_CSS_KEY) ?? ''
 }
 
+/** Cache custom CSS locally so it persists between sessions (offline). */
 export function saveCustomCss(css: string): void {
   localStorage.setItem(CUSTOM_CSS_KEY, css)
+}
+
+export function clearCustomCss(): void {
+  localStorage.removeItem(CUSTOM_CSS_KEY)
 }
 
 function customStyleEl(): HTMLStyleElement {

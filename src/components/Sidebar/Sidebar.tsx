@@ -1,22 +1,32 @@
 import { useRef, useState } from 'react'
-import { Download, FileArchive, Film, ImagePlus, Images } from 'lucide-react'
-import type { DitherSettings, ExportKind, ProjectKind } from '../../types'
+import { Clapperboard, Download, FileArchive, Film, ImagePlus, Images, X } from 'lucide-react'
+import type { DitherSettings, ExportKind, KeyframableParam, ProjectKind } from '../../types'
 import { DEFAULT_SETTINGS } from '../../types'
 import { ALGORITHMS, isErrorDiffusion } from '../../dither/algorithms/index'
 import { MONO_PRESETS } from '../../dither/palette'
-import { ColorRow, Section, SelectRow, SliderRow, ToggleRow } from './controls'
+import { Section, SelectRow, SliderRow, ToggleRow, type KfControlProps } from './controls'
+import { ColorField } from '../ui/ColorField'
+import { KeyframeControl } from './controls'
 import { NumberField } from '../ui/NumberField'
 
 interface SidebarProps {
+  /** Evaluated (keyframe-aware) settings for display. */
   settings: DitherSettings
+  /** Patch non-keyframable settings (history-tracked). */
   update: (patch: Partial<DitherSettings>) => void
+  /** Set a keyframable parameter (routes to keyframe or base value). */
+  updateParam: (param: KeyframableParam, value: number | string) => void
+  /** Keyframe UI state + actions per parameter. */
+  kfControl: (param: KeyframableParam) => KfControlProps
   onImportImages: (files: File[]) => void
   onImportVideo: (file: File, extractFps: number) => void
   onExport: (kind: ExportKind) => void
   projectKind: ProjectKind
   frameCount: number
   frameSize: { width: number; height: number } | null
-  exporting: boolean
+  /** Inline export progress (sidebar-only feedback). */
+  exportProgress: { label: string; value: number | null } | null
+  onCancelExport: () => void
 }
 
 const KIND_LABEL: Record<ProjectKind, string> = {
@@ -41,13 +51,16 @@ const ALGORITHM_OPTIONS = ALGORITHMS.map((a) => ({
 export function Sidebar({
   settings,
   update,
+  updateParam,
+  kfControl,
   onImportImages,
   onImportVideo,
   onExport,
   projectKind,
   frameCount,
   frameSize,
-  exporting,
+  exportProgress,
+  onCancelExport,
 }: SidebarProps) {
   const imageInput = useRef<HTMLInputElement>(null)
   const sequenceInput = useRef<HTMLInputElement>(null)
@@ -56,6 +69,7 @@ export function Sidebar({
 
   const errorDiffusion = isErrorDiffusion(settings.algorithm)
   const mono = settings.paletteMode === 'mono'
+  const exporting = exportProgress !== null
 
   // Processing never upscales beyond the source width.
   const effRes = frameSize ? Math.min(settings.resolution, frameSize.width) : settings.resolution
@@ -157,7 +171,8 @@ export function Sidebar({
           step={8}
           resetValue={d.resolution}
           unit="px"
-          onChange={(v) => update({ resolution: v })}
+          kf={kfControl('resolution')}
+          onChange={(v) => updateParam('resolution', v)}
         />
         <ToggleRow
           label="Serpentine scan"
@@ -172,7 +187,8 @@ export function Sidebar({
           max={16}
           resetValue={d.greyLevels}
           disabled={!mono}
-          onChange={(v) => update({ greyLevels: v })}
+          kf={kfControl('greyLevels')}
+          onChange={(v) => updateParam('greyLevels', v)}
         />
       </Section>
 
@@ -184,7 +200,8 @@ export function Sidebar({
           min={-100}
           max={100}
           resetValue={d.brightness}
-          onChange={(v) => update({ brightness: v })}
+          kf={kfControl('brightness')}
+          onChange={(v) => updateParam('brightness', v)}
         />
         <SliderRow
           label="Contrast"
@@ -192,7 +209,8 @@ export function Sidebar({
           min={-100}
           max={100}
           resetValue={d.contrast}
-          onChange={(v) => update({ contrast: v })}
+          kf={kfControl('contrast')}
+          onChange={(v) => updateParam('contrast', v)}
         />
         <SliderRow
           label="Midtones / Gamma"
@@ -202,7 +220,8 @@ export function Sidebar({
           step={0.05}
           decimals={2}
           resetValue={d.gamma}
-          onChange={(v) => update({ gamma: v })}
+          kf={kfControl('gamma')}
+          onChange={(v) => updateParam('gamma', v)}
         />
         <SliderRow
           label="Threshold"
@@ -210,7 +229,8 @@ export function Sidebar({
           min={-100}
           max={100}
           resetValue={d.threshold}
-          onChange={(v) => update({ threshold: v })}
+          kf={kfControl('threshold')}
+          onChange={(v) => updateParam('threshold', v)}
         />
         <SliderRow
           label="Pre-blur"
@@ -221,7 +241,8 @@ export function Sidebar({
           decimals={1}
           unit="px"
           resetValue={d.preBlur}
-          onChange={(v) => update({ preBlur: v })}
+          kf={kfControl('preBlur')}
+          onChange={(v) => updateParam('preBlur', v)}
         />
         <ToggleRow
           label="Invert"
@@ -242,22 +263,24 @@ export function Sidebar({
           onChange={(v) => update({ paletteMode: v as DitherSettings['paletteMode'] })}
         />
 
-        <ColorRow
+        <ColorField
           label="Highlight"
           value={settings.lightColor}
           disabled={!mono}
-          onChange={(v) => update({ lightColor: v })}
+          onChange={(v) => updateParam('lightColor', v)}
+          headSlot={<KeyframeControl {...kfControl('lightColor')} />}
         />
-        <ColorRow
+        <ColorField
           label="Shadow"
           value={settings.darkColor}
           disabled={!mono}
-          onChange={(v) => update({ darkColor: v })}
+          onChange={(v) => updateParam('darkColor', v)}
+          headSlot={<KeyframeControl {...kfControl('darkColor')} />}
         />
 
         <div className={`control${mono ? '' : ' disabled'}`}>
           <div className="control-head">
-            <span className="control-label">Presets</span>
+            <span className="control-label">Duotone presets</span>
           </div>
           <div className="swatch-row">
             {MONO_PRESETS.map((p) => (
@@ -265,7 +288,10 @@ export function Sidebar({
                 key={p.name}
                 className="swatch"
                 title={p.name}
-                onClick={() => update({ lightColor: p.light, darkColor: p.dark })}
+                onClick={() => {
+                  updateParam('lightColor', p.light)
+                  updateParam('darkColor', p.dark)
+                }}
               >
                 <span className="sw-a" style={{ background: p.light }} />
                 <span className="sw-b" style={{ background: p.dark }} />
@@ -295,7 +321,8 @@ export function Sidebar({
           max={16}
           resetValue={d.pixelScale}
           unit="×"
-          onChange={(v) => update({ pixelScale: v })}
+          kf={kfControl('pixelScale')}
+          onChange={(v) => updateParam('pixelScale', v)}
         />
         <div className="import-meta" style={{ marginTop: 0 }}>
           Output size: <b>
@@ -304,6 +331,7 @@ export function Sidebar({
               : '—'}
           </b>
         </div>
+
         <div className="export-btns">
           <button
             className="btn btn--sm"
@@ -334,7 +362,49 @@ export function Sidebar({
           >
             <FileArchive size={14} /> Sequence
           </button>
+          <button
+            className="btn btn--sm"
+            disabled={frameCount === 0 || exporting}
+            onClick={() => onExport('mp4')}
+            title="Timeline as H.264 MP4 (duration, FPS and keyframes apply)"
+          >
+            <Clapperboard size={14} /> MP4
+          </button>
+          <button
+            className="btn btn--sm"
+            disabled={frameCount === 0 || exporting}
+            onClick={() => onExport('gif')}
+            title="Timeline as animated GIF (duration, FPS and keyframes apply)"
+          >
+            <Clapperboard size={14} /> GIF
+          </button>
         </div>
+
+        {exportProgress && (
+          <div className="export-progress">
+            <div className="export-progress-head">
+              <span className="control-label">{exportProgress.label}</span>
+              <button
+                className="iconbtn"
+                onClick={onCancelExport}
+                aria-label="Cancel export"
+                title="Cancel export"
+              >
+                <X size={12} />
+              </button>
+            </div>
+            <div className="progress-track">
+              <div
+                className={`progress-fill${exportProgress.value === null ? ' indeterminate' : ''}`}
+                style={
+                  exportProgress.value === null
+                    ? undefined
+                    : { width: `${Math.round(exportProgress.value * 100)}%` }
+                }
+              />
+            </div>
+          </div>
+        )}
       </Section>
     </aside>
   )

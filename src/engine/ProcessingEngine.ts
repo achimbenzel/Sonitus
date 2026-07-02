@@ -163,8 +163,16 @@ export class ProcessingEngine {
     return rest
   }
 
-  /** Process a frame with the given settings. Deduped and cached. */
-  getProcessed(frame: SourceFrame, settings: DitherSettings, priority: number): Promise<ImageBitmap> {
+  /** Process a frame with the given settings. Deduped and cached.
+   *  `tag` groups queued work for cancellation (defaults to the
+   *  settings hash; keyframed timelines pass a generation id instead,
+   *  since their per-frame hashes legitimately differ). */
+  getProcessed(
+    frame: SourceFrame,
+    settings: DitherSettings,
+    priority: number,
+    tag?: string,
+  ): Promise<ImageBitmap> {
     const hash = this.settingsHash(settings)
     const key = this.key(frame.id, hash)
     const cached = this.processed.get(key)
@@ -175,7 +183,7 @@ export class ProcessingEngine {
     const p = (async () => {
       const src = await this.decodeSource(frame)
       const small = this.downscale(src, settings.resolution)
-      const out = await this.pool.run(small, this.pipelineSettings(settings), priority, hash)
+      const out = await this.pool.run(small, this.pipelineSettings(settings), priority, tag ?? hash)
       const bmp = await createImageBitmap(new ImageData(out.data, out.width, out.height))
       this.processed.set(key, bmp)
       this.emit()
@@ -197,9 +205,10 @@ export class ProcessingEngine {
     )
   }
 
-  /** Drop queued work whose settings no longer match (stale buffering). */
-  invalidatePending(currentHash: string): void {
-    this.pool.cancelQueued((tag, priority) => priority === PRIORITY.BUFFER && tag !== currentHash)
+  /** Drop queued buffer work from an older generation (stale settings
+   *  or keyframes). */
+  invalidatePending(currentTag: string): void {
+    this.pool.cancelQueued((tag, priority) => priority === PRIORITY.BUFFER && tag !== currentTag)
   }
 
   /** Reset for a new project. */

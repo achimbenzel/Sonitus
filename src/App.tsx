@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type {
   CompareMode,
+  DitherSettings,
   ExportKind,
+  KeyframableParam,
+  KeyframeMap,
   ProgressState,
   ProjectKind,
   SourceFrame,
@@ -9,8 +12,19 @@ import type {
 import { DEFAULT_SETTINGS } from './types'
 import { PRIORITY, ProcessingEngine } from './engine/ProcessingEngine'
 import { useSettingsHistory } from './hooks/useSettingsHistory'
+import {
+  allKeyframeFrames,
+  evaluateSettings,
+  hasKeyframeAt,
+  hasKeyframes,
+  nextKeyframe,
+  prevKeyframe,
+  removeKeyframe,
+  setKeyframe,
+} from './keyframes/keyframes'
 import { buildImageFrames, extractVideoFrames } from './utils/imageLoad'
 import { exportSequence, exportStill, exportSvg, type SequenceExportHandle } from './utils/export'
+import { exportGif, exportMp4 } from './utils/videoExport'
 import { exportPreset, parsePreset } from './utils/presets'
 import { applyUiStyle, loadUiStyle } from './themes/uiStyles'
 import { TopBar } from './components/TopBar/TopBar'
@@ -20,10 +34,16 @@ import { Timeline } from './components/Timeline/Timeline'
 import { ProgressOverlay } from './components/ProgressOverlay/ProgressOverlay'
 import { SettingsModal } from './components/modals/SettingsModal'
 import { AboutModal } from './components/modals/AboutModal'
+import type { KfControlProps } from './components/Sidebar/controls'
 
 interface Toast {
   message: string
   error: boolean
+}
+
+interface ExportProgress {
+  label: string
+  value: number | null
 }
 
 export default function App() {
@@ -38,27 +58,72 @@ export default function App() {
   const [projectKind, setProjectKind] = useState<ProjectKind>('none')
   const [current, setCurrent] = useState(0)
   const [fps, setFps] = useState(12)
+  const [durationSeconds, setDurationSeconds] = useState(5)
   const [loop, setLoop] = useState(true)
   const [playing, setPlaying] = useState(false)
   const [buffering, setBuffering] = useState(false)
   const [compare, setCompare] = useState<CompareMode>('dithered')
   const [holdOriginal, setHoldOriginal] = useState(false)
+  const [keyframes, setKeyframes] = useState<KeyframeMap>({})
   const [processed, setProcessed] = useState<ImageBitmap | null>(null)
   const [original, setOriginal] = useState<ImageBitmap | null>(null)
   const [progress, setProgress] = useState<ProgressState | null>(null)
+  const [exportProgress, setExportProgress] = useState<ExportProgress | null>(null)
   const [toast, setToast] = useState<Toast | null>(null)
-  const [, setBufferTick] = useState(0)
+  const [bufferTick, setBufferTick] = useState(0)
   const [uiStyle, setUiStyle] = useState(loadUiStyle)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [aboutOpen, setAboutOpen] = useState(false)
   const openInputRef = useRef<HTMLInputElement>(null)
 
-  const hash = useMemo(() => engine.settingsHash(settings), [engine, settings])
-  const frame = frames[current] ?? null
+  /* ---------- timeline geometry ---------- */
+
+  // Sequences dictate the timeline length; otherwise fps × duration.
+  const totalFrames =
+    frames.length > 1 ? frames.length : Math.max(1, Math.round(fps * durationSeconds))
+
+  // Keep the playhead inside the timeline when it shrinks.
+  useEffect(() => {
+    setCurrent((c) => Math.min(c, totalFrames - 1))
+  }, [totalFrames])
+
+  /** Timeline frame → source frame (sequences 1:1, stills repeat). */
+  const sourceFrameAt = useCallback(
+    (i: number): SourceFrame | null =>
+      frames.length > 1 ? (frames[Math.min(i, frames.length - 1)] ?? null) : (frames[0] ?? null),
+    [frames],
+  )
+
+  const frame = sourceFrameAt(current)
+
+  /* ---------- keyframe-aware settings ---------- */
+
+  const effSettings = useMemo(
+    () => evaluateSettings(settings, keyframes, current),
+    [settings, keyframes, current],
+  )
+  const hash = useMemo(() => engine.settingsHash(effSettings), [engine, effSettings])
+  /** Cancellation generation: changes when base settings or keyframes
+   *  change, but NOT when the playhead moves (buffered frames of a
+   *  keyframed timeline have different hashes on purpose). */
+  const generation = useMemo(
+    () => engine.settingsHash(settings) + '§' + JSON.stringify(keyframes),
+    [engine, settings, keyframes],
+  )
 
   /* Refs mirroring state, for callbacks that must read latest values. */
-  const stateRef = useRef({ settings, frames, current, hash, playing, fps, loop })
-  stateRef.current = { settings, frames, current, hash, playing, fps, loop }
+  const stateRef = useRef({
+    settings, keyframes, frames, current, hash, generation, playing, fps, loop, totalFrames,
+  })
+  stateRef.current = {
+    settings, keyframes, frames, current, hash, generation, playing, fps, loop, totalFrames,
+  }
+
+  const settingsAt = useCallback(
+    (i: number): DitherSettings =>
+      evaluateSettings(stateRef.current.settings, stateRef.current.keyframes, i),
+    [],
+  )
 
   /* ---------- UI style ---------- */
 
@@ -71,14 +136,62 @@ export default function App() {
     window.setTimeout(() => setToast((t) => (t?.message === message ? null : t)), 4500)
   }, [])
 
+  /* ---------- keyframe editing ---------- */
+
+  const updateParam = useCallback(
+    (param: KeyframableParam, value: number | string) => {
+      const { keyframes: kfs, current: cur } = stateRef.current
+      if (hasKeyframes(kfs, param)) {
+        // Animated parameter: edits write a keyframe at the playhead.
+        setKeyframes(setKeyframe(kfs, param, cur, value))
+      } else {
+        update({ [param]: value } as Partial<DitherSettings>)
+      }
+    },
+    [update],
+  )
+
+  const toggleKf = useCallback((param: KeyframableParam) => {
+    const { keyframes: kfs, current: cur, settings: base } = stateRef.current
+    if (hasKeyframeAt(kfs, param, cur)) {
+      setKeyframes(removeKeyframe(kfs, param, cur))
+    } else {
+      const value = evaluateSettings(base, kfs, cur)[param]
+      setKeyframes(setKeyframe(kfs, param, cur, value))
+    }
+  }, [])
+
+  const kfControl = useCallback(
+    (param: KeyframableParam): KfControlProps => {
+      const prev = prevKeyframe(keyframes, param, current)
+      const next = nextKeyframe(keyframes, param, current)
+      return {
+        has: hasKeyframes(keyframes, param),
+        at: hasKeyframeAt(keyframes, param, current),
+        canPrev: prev !== null,
+        canNext: next !== null,
+        onToggle: () => toggleKf(param),
+        onPrev: () => {
+          if (prev !== null) setCurrent(prev)
+        },
+        onNext: () => {
+          if (next !== null) setCurrent(next)
+        },
+      }
+    },
+    [keyframes, current, toggleKf],
+  )
+
+  const keyframeFrames = useMemo(() => allKeyframeFrames(keyframes), [keyframes])
+
   /* ---------- preview processing (throttled, never blocks UI) ---------- */
 
   const previewInFlight = useRef(false)
   const previewDirty = useRef(false)
 
   const kickPreview = useCallback(() => {
-    const { frames: fr, current: cur, settings: s, hash: h } = stateRef.current
-    const f = fr[cur]
+    const { frames: fr, current: cur, hash: h, generation: gen } = stateRef.current
+    const f = fr.length > 1 ? fr[Math.min(cur, fr.length - 1)] : fr[0]
     if (!f) {
       setProcessed(null)
       return
@@ -89,11 +202,11 @@ export default function App() {
     }
     previewInFlight.current = true
     engine
-      .getProcessed(f, s, PRIORITY.PREVIEW)
+      .getProcessed(f, settingsAt(cur), PRIORITY.PREVIEW, gen)
       .then((bmp) => {
         // Only display if this result still matches the live state.
         const now = stateRef.current
-        if (now.frames[now.current]?.id === f.id && now.hash === h) {
+        if (now.hash === h && (now.frames.length > 1 ? now.frames[Math.min(now.current, now.frames.length - 1)] : now.frames[0])?.id === f.id) {
           setProcessed(bmp)
         }
       })
@@ -105,12 +218,12 @@ export default function App() {
           kickPreview()
         }
       })
-  }, [engine])
+  }, [engine, settingsAt])
 
   useEffect(() => {
-    engine.invalidatePending(hash)
+    engine.invalidatePending(generation)
     kickPreview()
-  }, [engine, hash, frame?.id, kickPreview])
+  }, [engine, hash, generation, frame?.id, kickPreview])
 
   /* ---------- original (compare) decode ---------- */
 
@@ -136,22 +249,24 @@ export default function App() {
   useEffect(() => engine.onProcessed(() => setBufferTick((v) => v + 1)), [engine])
 
   useEffect(() => {
-    if (frames.length < 2) return
+    if (frames.length === 0 || totalFrames < 2) return
     const ahead = playing ? Math.max(12, Math.min(fps * 2, 48)) : 4
     for (let i = 1; i <= ahead; i++) {
-      const idx = loop ? (current + i) % frames.length : current + i
-      if (idx >= frames.length) break
-      const f = frames[idx]
-      if (!engine.isCached(f, hash)) {
-        engine.getProcessed(f, settings, PRIORITY.BUFFER).catch(() => {})
+      const idx = loop ? (current + i) % totalFrames : current + i
+      if (idx >= totalFrames) break
+      const f = sourceFrameAt(idx)
+      if (!f) break
+      const s = evaluateSettings(settings, keyframes, idx)
+      if (!engine.isCached(f, engine.settingsHash(s))) {
+        engine.getProcessed(f, s, PRIORITY.BUFFER, generation).catch(() => {})
       }
     }
-  }, [engine, frames, current, hash, settings, playing, fps, loop])
+  }, [engine, frames, sourceFrameAt, current, generation, settings, keyframes, playing, fps, loop, totalFrames])
 
   /* ---------- playback loop ---------- */
 
   useEffect(() => {
-    if (!playing || frames.length < 2) return
+    if (!playing || totalFrames < 2) return
     let raf = 0
     let last = performance.now()
     let acc = 0
@@ -159,16 +274,19 @@ export default function App() {
       raf = requestAnimationFrame(step)
       acc += now - last
       last = now
-      const { fps: curFps, loop: curLoop, current: cur, frames: fr, hash: h } = stateRef.current
+      const { fps: curFps, loop: curLoop, current: cur, frames: fr, totalFrames: total } = stateRef.current
       const frameDur = 1000 / curFps
       if (acc < frameDur) return
-      const nextIdx = cur + 1 >= fr.length ? (curLoop ? 0 : -1) : cur + 1
+      const nextIdx = cur + 1 >= total ? (curLoop ? 0 : -1) : cur + 1
       if (nextIdx === -1) {
         setPlaying(false)
         return
       }
-      const nextFrame = fr[nextIdx]
-      if (engine.isCached(nextFrame, h)) {
+      const nextFrame = fr.length > 1 ? fr[Math.min(nextIdx, fr.length - 1)] : fr[0]
+      const ready =
+        !nextFrame ||
+        engine.isCached(nextFrame, engine.settingsHash(settingsAt(nextIdx)))
+      if (ready) {
         setBuffering(false)
         acc = Math.min(acc - frameDur, frameDur) // don't spiral after a stall
         setCurrent(nextIdx)
@@ -183,7 +301,7 @@ export default function App() {
       cancelAnimationFrame(raf)
       setBuffering(false)
     }
-  }, [playing, frames.length, engine])
+  }, [playing, totalFrames, engine, settingsAt])
 
   const togglePlay = useCallback(() => {
     setPlaying((p) => !p)
@@ -255,64 +373,91 @@ export default function App() {
     [importImages, importVideo],
   )
 
-  /* New File: clear the canvas/source, keep settings. */
+  /* New File: clear the canvas/source, keep settings + keyframes. */
   const newFile = useCallback(() => {
     if (frames.length > 0 && !window.confirm('Clear the current source?')) return
     loadFrames([], 'none')
   }, [frames.length, loadFrames])
 
-  /* New Project: clear source AND reset every parameter. */
+  /* New Project: clear source AND reset every parameter + keyframes. */
   const newProject = useCallback(() => {
     if (
-      (frames.length > 0 || canUndo) &&
+      (frames.length > 0 || canUndo || keyframeFrames.length > 0) &&
       !window.confirm('Start a new project? This clears the source and resets all settings.')
     ) {
       return
     }
     loadFrames([], 'none')
     replaceAll(DEFAULT_SETTINGS)
+    setKeyframes({})
     setFps(12)
+    setDurationSeconds(5)
     setLoop(true)
     setCompare('dithered')
-  }, [frames.length, canUndo, loadFrames, replaceAll])
+  }, [frames.length, canUndo, keyframeFrames.length, loadFrames, replaceAll])
 
   /* ---------- export ---------- */
 
-  const seqHandle = useRef<SequenceExportHandle | null>(null)
+  const exportHandle = useRef<SequenceExportHandle | null>(null)
 
   const handleExport = useCallback(
     async (kind: ExportKind) => {
-      const { frames: fr, current: cur, settings: s } = stateRef.current
-      const f = fr[cur]
+      const { frames: fr, current: cur, totalFrames: total, fps: curFps } = stateRef.current
+      const f = fr.length > 1 ? fr[Math.min(cur, fr.length - 1)] : fr[0]
       if (!f) return
+      const still = settingsAt(cur)
       try {
         if (kind === 'png' || kind === 'jpeg') {
-          setProgress({ label: `Exporting ${kind.toUpperCase()}`, value: null })
-          await exportStill(engine, f, s, kind)
+          setExportProgress({ label: `Exporting ${kind.toUpperCase()}`, value: null })
+          await exportStill(engine, f, still, kind)
         } else if (kind === 'svg') {
-          setProgress({ label: 'Exporting SVG', value: null })
-          await exportSvg(engine, f, s)
+          setExportProgress({ label: 'Exporting SVG', value: null })
+          await exportSvg(engine, f, still)
         } else {
           const handle: SequenceExportHandle = { cancelled: false }
-          seqHandle.current = handle
-          setProgress({ label: 'Exporting sequence', value: 0, cancellable: true })
-          await exportSequence(engine, fr, s, (v) =>
-            setProgress({ label: 'Exporting sequence', value: v, cancellable: true }),
-          handle)
-          if (handle.cancelled) showToast('Sequence export cancelled')
+          exportHandle.current = handle
+          if (kind === 'sequence') {
+            setExportProgress({ label: 'Exporting sequence', value: 0 })
+            await exportSequence(engine, fr, settingsAt, (v) =>
+              setExportProgress({ label: 'Exporting sequence', value: v }),
+            handle)
+          } else if (kind === 'mp4') {
+            setExportProgress({ label: 'Encoding MP4', value: 0 })
+            await exportMp4({
+              engine,
+              frames: fr,
+              totalFrames: total,
+              fps: curFps,
+              settingsAt,
+              onProgress: (v) => setExportProgress({ label: 'Encoding MP4', value: v }),
+              handle,
+            })
+          } else {
+            setExportProgress({ label: 'Encoding GIF', value: 0 })
+            await exportGif({
+              engine,
+              frames: fr,
+              totalFrames: total,
+              fps: curFps,
+              settingsAt,
+              onProgress: (v) => setExportProgress({ label: 'Encoding GIF', value: v }),
+              handle,
+            })
+          }
+          if (handle.cancelled) showToast('Export cancelled')
         }
       } catch (err) {
         showToast(err instanceof Error ? err.message : 'Export failed', true)
       } finally {
-        setProgress(null)
-        seqHandle.current = null
+        setExportProgress(null)
+        exportHandle.current = null
       }
     },
-    [engine, showToast],
+    [engine, settingsAt, showToast],
   )
 
-  const cancelProgress = useCallback(() => {
-    if (seqHandle.current) seqHandle.current.cancelled = true
+  const cancelExport = useCallback(() => {
+    if (exportHandle.current) exportHandle.current.cancelled = true
   }, [])
 
   /* ---------- presets ---------- */
@@ -357,15 +502,15 @@ export default function App() {
         e.preventDefault()
         redo()
       } else if (e.key === ' ') {
-        if (stateRef.current.frames.length > 1) {
+        if (stateRef.current.totalFrames > 1) {
           e.preventDefault()
           togglePlay()
         }
       } else if (e.key.toLowerCase() === 'c' && !mod && !e.repeat) {
         setHoldOriginal(true)
-      } else if (e.key === 'ArrowRight' && stateRef.current.frames.length > 1) {
-        setCurrent((c) => Math.min(stateRef.current.frames.length - 1, c + 1))
-      } else if (e.key === 'ArrowLeft' && stateRef.current.frames.length > 1) {
+      } else if (e.key === 'ArrowRight' && stateRef.current.totalFrames > 1) {
+        setCurrent((c) => Math.min(stateRef.current.totalFrames - 1, c + 1))
+      } else if (e.key === 'ArrowLeft' && stateRef.current.totalFrames > 1) {
         setCurrent((c) => Math.max(0, c - 1))
       }
     }
@@ -384,10 +529,11 @@ export default function App() {
 
   const bufferedAt = useCallback(
     (index: number) => {
-      const f = frames[index]
-      return f ? engine.isCached(f, hash) : false
+      const f = sourceFrameAt(index)
+      if (!f) return false
+      return engine.isCached(f, engine.settingsHash(evaluateSettings(settings, keyframes, index)))
     },
-    [engine, frames, hash],
+    [engine, sourceFrameAt, settings, keyframes],
   )
 
   return (
@@ -431,42 +577,48 @@ export default function App() {
           onDropFiles={onDropFiles}
         />
         <Sidebar
-          settings={settings}
+          settings={effSettings}
           update={update}
+          updateParam={updateParam}
+          kfControl={kfControl}
           onImportImages={importImages}
           onImportVideo={importVideo}
           onExport={handleExport}
           projectKind={projectKind}
           frameCount={frames.length}
           frameSize={frame ? { width: frame.width, height: frame.height } : null}
-          exporting={progress !== null}
+          exportProgress={exportProgress}
+          onCancelExport={cancelExport}
         />
       </div>
 
-      {frames.length > 1 && (
-        <Timeline
-          frames={frames}
-          current={current}
-          onSeek={(i) => setCurrent(i)}
-          playing={playing}
-          onTogglePlay={togglePlay}
-          fps={fps}
-          setFps={setFps}
-          loop={loop}
-          setLoop={setLoop}
-          buffered={bufferedAt}
-          buffering={buffering}
-        />
-      )}
+      <Timeline
+        frames={frames}
+        totalFrames={totalFrames}
+        current={current}
+        onSeek={(i) => setCurrent(Math.min(totalFrames - 1, Math.max(0, i)))}
+        playing={playing}
+        onTogglePlay={togglePlay}
+        fps={fps}
+        setFps={setFps}
+        durationSeconds={durationSeconds}
+        setDurationSeconds={setDurationSeconds}
+        loop={loop}
+        setLoop={setLoop}
+        bufferedAt={bufferedAt}
+        buffering={buffering}
+        keyframeFrames={keyframeFrames}
+        bufferTick={bufferTick}
+      />
 
-      {progress && <ProgressOverlay progress={progress} onCancel={cancelProgress} />}
+      {progress && <ProgressOverlay progress={progress} />}
       {toast && <div className={`toast${toast.error ? ' error' : ''}`}>{toast.message}</div>}
 
       {settingsOpen && (
         <SettingsModal
           uiStyle={uiStyle}
           onSelectStyle={(id) => {
-            setUiStyle(id)
+            setUiStyle(id as typeof uiStyle)
             applyUiStyle(id)
           }}
           onClose={() => setSettingsOpen(false)}

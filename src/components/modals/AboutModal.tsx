@@ -13,6 +13,8 @@ const THIRD_PARTY = [
   { name: 'react / react-dom', license: 'MIT', role: 'UI framework' },
   { name: 'fflate', license: 'MIT', role: 'ZIP creation for sequence export' },
   { name: 'lucide-react', license: 'ISC', role: 'Icon set (bundled locally)' },
+  { name: 'mp4-muxer', license: 'MIT', role: 'MP4 muxing for video export' },
+  { name: 'gifenc', license: 'MIT', role: 'GIF encoding for animation export' },
   { name: 'vite', license: 'MIT', role: 'Build tool (dev dependency)' },
   { name: 'typescript', license: 'Apache-2.0', role: 'Compiler (dev dependency)' },
 ]

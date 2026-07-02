@@ -47,7 +47,7 @@
 [data-theme='light'] .timeline{background:linear-gradient(180deg,rgba(255,255,255,.5),rgba(228,241,246,.85))}
 [data-theme='light'] .btn{background:linear-gradient(180deg,rgba(255,255,255,.9),rgba(70,179,204,.12));
   box-shadow:var(--gloss-inset),0 4px 12px rgba(23,68,84,.15)}
-[data-theme='light'] .tl-frame{background:#e2eef2}
+[data-theme='light'] .tl-scroll{background:rgba(255,255,255,.45)}
 [data-theme='light'] .select-trigger,
 [data-theme='light'] .select-menu,
 [data-theme='light'] .modal-panel,
@@ -56,7 +56,7 @@
 [data-theme='light'] .style-card{
   background:linear-gradient(180deg,#fdffff,#eef7fa)}
 [data-theme='light'] .numfield,
-[data-theme='light'] .customcss-input,
+[data-theme='light'] .colorfield-hexinput,
 [data-theme='light'] .control-valueinput{background:rgba(255,255,255,.85);color:var(--ink)}
 [data-theme='light'] .control-value:hover{background:rgba(255,255,255,.7)}
 [data-theme='light'] input[type="range"]::-webkit-slider-runnable-track{
@@ -124,8 +124,8 @@
   background:#141416}
 [data-theme='clean'] .select-option.active{background:#27272a;color:#fafafa}
 [data-theme='clean'] .progress-fill{background:#fafafa;box-shadow:none}
-[data-theme='clean'] .tl-frame.current{box-shadow:none;border-color:#fafafa}
-[data-theme='clean'] .tl-frame .buf{background:#71717a;box-shadow:none}
+[data-theme='clean'] .tl-playhead{box-shadow:none}
+[data-theme='clean'] .tl-scroll{background:#111113}
 [data-theme='clean'] .tl-workdot.on{box-shadow:none;background:#a1a1aa}
 [data-theme='clean'] .iconbtn:hover:not(:disabled){background:#232326;box-shadow:none;color:#fafafa}
 [data-theme='clean'] .overlay{background:rgba(0,0,0,.6)}
@@ -135,8 +135,8 @@
   border-color:#71717a;box-shadow:0 0 0 3px rgba(161,161,170,.18)}
 
 /* ------------------------------------------------------------
-   XP — Windows XP inspired: Luna silver surfaces, blue title bar,
-   square-ish corners, beveled controls
+   EXPERIENCE (id: xp) — early-2000s desktop: silver surfaces,
+   blue title bar, square-ish corners, beveled controls
    ------------------------------------------------------------ */
 [data-theme='xp']{
   color-scheme:light;
@@ -215,13 +215,94 @@
 [data-theme='xp'] .numfield input{color:#1a1a1a}
 [data-theme='xp'] .numfield-steppers button{color:#3f5a86}
 [data-theme='xp'] .numfield-steppers button:hover{background:#cfe0f8;color:#0a54d5}
-[data-theme='xp'] .tl-frame{background:#dcd9c4}
-[data-theme='xp'] .tl-frame.current{border-color:#316ac5;box-shadow:0 0 0 1px #316ac5}
-[data-theme='xp'] .tl-frame .buf{background:#4f9436;box-shadow:none}
+[data-theme='xp'] .tl-scroll{background:#fffef7;border-color:#9c9a86}
+[data-theme='xp'] .tl-playhead{background:#316ac5;box-shadow:none}
+[data-theme='xp'] .tl-playhead-cap{background:#316ac5}
 [data-theme='xp'] .tl-workdot.on{background:#316ac5;box-shadow:none}
 [data-theme='xp'] .overlay{background:rgba(60,60,50,.45)}
-[data-theme='xp'] .customcss-input{background:#fff;color:#1a1a1a;border-color:#7f9db9;box-shadow:none}
+[data-theme='xp'] .colorfield-hexinput{background:#fff;color:#1a1a1a;border-color:#7f9db9;box-shadow:none}
 [data-theme='xp'] .vp-chipgroup,[data-theme='xp'] .viewport-hint,[data-theme='xp'] .split-label{
   background:rgba(236,233,216,.92);backdrop-filter:none}
 [data-theme='xp'] .iconbtn:hover:not(:disabled){background:#cfe0f8;border-color:#7f9db9;
   color:#0a54d5;box-shadow:none}
+
+/* ------------------------------------------------------------
+   SIGNAL CORE — early console dashboard: near-black panels,
+   lime glow accents, glossy blades, bold focus rings
+   ------------------------------------------------------------ */
+[data-theme='signal']{
+  color-scheme:dark;
+  --paper:#070a06;
+  --paper-2:#0b110a;
+  --paper-card:#101a0e;
+  --ink:#e9f6e4;
+  --ink-soft:#9fbf95;
+  --ink-dim:#5e7a56;
+  --sky-blue:#a7e816;            /* primary glow */
+  --accent:#7cc410;
+  --accent-bright:#b6f42e;
+  --accent-rgb:124,196,16;
+  --sky-blue-rgb:167,232,22;
+  --blue-deep:#c8ff4a;
+  --line:#22331d;
+  --line-strong:#3a5530;
+  --nav-bg:rgba(10,16,8,.82);
+  --shadow:0 18px 48px rgba(0,0,0,.65);
+  --win-shadow:0 16px 40px rgba(0,0,0,.7);
+  --gloss-inset:0 1px 0 rgba(255,255,255,.09) inset;
+  --glow:0 0 26px rgba(167,232,22,.32);
+  --radius-small:6px;
+  --radius-med:10px;
+  --radius-large:14px;
+}
+[data-theme='signal'] body::before{
+  background:
+    linear-gradient(180deg,rgba(14,24,10,.5),rgba(4,7,3,.9)),
+    radial-gradient(120% 90% at 50% -10%,#16290f 0%,#0c160a 45%,#05080400 100%),
+    var(--paper)}
+[data-theme='signal'] body::after{
+  background-image:
+    radial-gradient(closest-side at 50% -8%,rgba(124,196,16,.2),transparent 70%),
+    radial-gradient(rgba(167,232,22,.06) 1px,transparent 1px)}
+[data-theme='signal'] .viewport{background:linear-gradient(180deg,#0d160b,#080f06)}
+[data-theme='signal'] .vp-empty{
+  background:repeating-linear-gradient(135deg,rgba(13,22,11,.9) 0 10px,rgba(9,15,7,.9) 10px 20px)}
+[data-theme='signal'] .vp-empty-inner{background:rgba(7,10,6,.6)}
+[data-theme='signal'] .vp-empty-logo,[data-theme='signal'] .topbar-logo,
+[data-theme='signal'] .about-logo{filter:hue-rotate(255deg) saturate(1.6) drop-shadow(0 0 10px rgba(167,232,22,.5))}
+[data-theme='signal'] .sidebar{background:linear-gradient(180deg,rgba(167,232,22,.04),rgba(11,17,9,.78))}
+[data-theme='signal'] .timeline{background:linear-gradient(180deg,rgba(167,232,22,.03),rgba(8,13,6,.88))}
+/* glossy lime "blade" primaries */
+[data-theme='signal'] .btn--teal,[data-theme='signal'] .tl-play,[data-theme='signal'] .vp-chip.active,
+[data-theme='signal'] .split-handle{
+  color:#0c1503;border-color:rgba(183,244,46,.7);
+  background:linear-gradient(180deg,#cdf95c 0%,#8fd21c 45%,#69a90e 100%);
+  box-shadow:var(--gloss-inset),0 6px 18px rgba(124,196,16,.4)}
+[data-theme='signal'] .btn--teal:hover{background:linear-gradient(180deg,#d9ff75,#9fe22a 45%,#74b813)}
+[data-theme='signal'] input[type="range"]::-webkit-slider-runnable-track{
+  background:linear-gradient(180deg,rgba(0,0,0,.55),rgba(34,51,29,.9));border-color:var(--line)}
+[data-theme='signal'] input[type="range"]::-webkit-slider-thumb{
+  border-color:rgba(183,244,46,.75);
+  background:radial-gradient(circle at 34% 30%,#fff 0 24%,transparent 25%),
+    linear-gradient(180deg,#cdf95c,#7cc410);
+  box-shadow:0 0 10px rgba(167,232,22,.6),0 2px 6px rgba(0,0,0,.5)}
+[data-theme='signal'] .toggle input:checked+.track{border-color:rgba(183,244,46,.7);
+  background:linear-gradient(180deg,#54801c,#33540f);
+  box-shadow:inset 0 1px 3px rgba(0,0,0,.4),0 0 12px rgba(167,232,22,.35)}
+[data-theme='signal'] .toggle input:checked+.track::after{
+  background:radial-gradient(circle at 34% 30%,#fff 0 24%,transparent 25%),
+    linear-gradient(180deg,#cdf95c,#7cc410)}
+[data-theme='signal'] .select-option.active{background:rgba(167,232,22,.14)}
+[data-theme='signal'] .progress-fill{background:linear-gradient(180deg,#cdf95c,#7cc410);
+  box-shadow:0 0 14px rgba(167,232,22,.7)}
+[data-theme='signal'] .tl-playhead{background:var(--sky-blue);box-shadow:0 0 8px rgba(167,232,22,.8)}
+[data-theme='signal'] .tl-playhead-cap{background:var(--sky-blue)}
+[data-theme='signal'] .tl-workdot.on{background:var(--sky-blue);box-shadow:0 0 8px rgba(167,232,22,.8)}
+/* bold focus states — console-style thick ring */
+[data-theme='signal'] :focus-visible{outline:3px solid var(--accent-bright);outline-offset:2px;
+  box-shadow:0 0 0 6px rgba(167,232,22,.18)}
+[data-theme='signal'] .select-trigger.open,[data-theme='signal'] .select-trigger:focus-visible{
+  border-color:var(--accent-bright);box-shadow:var(--gloss-inset),0 0 16px rgba(167,232,22,.35)}
+[data-theme='signal'] .iconbtn:hover:not(:disabled){
+  background:linear-gradient(180deg,rgba(255,255,255,.08),rgba(124,196,16,.12));
+  color:var(--accent-bright)}

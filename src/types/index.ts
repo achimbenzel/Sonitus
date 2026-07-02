@@ -96,7 +96,47 @@ export interface SourceFrame {
 
 export type CompareMode = 'dithered' | 'original' | 'split'
 
-export type ExportKind = 'png' | 'jpeg' | 'svg' | 'sequence'
+export type ExportKind = 'png' | 'jpeg' | 'svg' | 'sequence' | 'mp4' | 'gif'
+
+/* ---------- Color picker ---------- */
+
+export type ColorPickerMode = 'picker' | 'hex' | 'presets'
+
+/* ---------- Keyframes ---------- */
+
+/** Settings keys that can be animated on the timeline. */
+export type KeyframableParam =
+  | 'resolution'
+  | 'brightness'
+  | 'contrast'
+  | 'gamma'
+  | 'threshold'
+  | 'preBlur'
+  | 'greyLevels'
+  | 'pixelScale'
+  | 'lightColor'
+  | 'darkColor'
+
+export interface Keyframe {
+  /** Timeline frame index the keyframe sits on. */
+  frame: number
+  /** Number for numeric params, hex string for color params. */
+  value: number | string
+}
+
+/** Per-parameter keyframe lists, each kept sorted by frame. */
+export type KeyframeMap = Partial<Record<KeyframableParam, Keyframe[]>>
+
+/* ---------- Timeline ---------- */
+
+export interface TimelineState {
+  /** Playback rate. */
+  fps: number
+  /** Timeline length in seconds when no sequence dictates it. */
+  durationSeconds: number
+  /** Total timeline frames (sequence length, or fps * duration). */
+  totalFrames: number
+}
 
 /** Plain-object image so the pipeline is usable both on the main
  *  thread and inside workers (and in node-based tests). */

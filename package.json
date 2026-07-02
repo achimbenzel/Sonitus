@@ -10,7 +10,9 @@
   },
   "dependencies": {
     "fflate": "^0.8.2",
+    "gifenc": "^1.0.3",
     "lucide-react": "^1.23.0",
+    "mp4-muxer": "^5.2.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },

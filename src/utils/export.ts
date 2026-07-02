@@ -131,13 +131,15 @@ export interface SequenceExportHandle {
 export async function exportSequence(
   engine: ProcessingEngine,
   frames: SourceFrame[],
-  settings: DitherSettings,
+  /** Per-frame settings so keyframed parameters are baked in. */
+  settingsAt: (i: number) => DitherSettings,
   onProgress: (v: number) => void,
   handle: SequenceExportHandle,
 ): Promise<void> {
   const files: Record<string, Uint8Array> = {}
   for (let i = 0; i < frames.length; i++) {
     if (handle.cancelled) return
+    const settings = settingsAt(i)
     const bmp = await engine.getProcessed(frames[i], settings, PRIORITY.EXPORT)
     const canvas = scaleToCanvas(bmp, settings.pixelScale)
     const blob = await canvas.convertToBlob({ type: 'image/png' })
