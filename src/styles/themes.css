@@ -68,7 +68,7 @@
   background:linear-gradient(180deg,#ffffff,rgba(70,179,204,.15))}
 
 /* ------------------------------------------------------------
-   CLEAN — minimal neutral UI, shadcn-inspired: flat surfaces,
+   CLEAN — minimal neutral UI, flat neutral surfaces,
    hairline borders, no glow/gloss/shimmer, restrained radius
    ------------------------------------------------------------ */
 [data-theme='clean']{

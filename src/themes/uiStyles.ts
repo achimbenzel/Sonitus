@@ -32,7 +32,7 @@ export const UI_STYLES: UiStyleDef[] = [
   {
     id: 'clean',
     label: 'Clean',
-    description: 'Minimal neutral UI, shadcn-inspired.',
+    description: 'Minimal neutral UI with flat surfaces.',
   },
   {
     id: 'xp',

@@ -30,7 +30,7 @@ import { exportCmykPlates, exportStill, exportSvg, type SequenceExportHandle } f
 import { exportGif, exportMp4, exportPngSequence } from './utils/videoExport'
 import { exportPreset, parsePreset } from './utils/presets'
 import { applyUiStyle, loadUiStyle } from './themes/uiStyles'
-import { postSoftenOf } from './utils/postResample'
+import { compositeSoftened, postSoftenOf } from './utils/postResample'
 import { TopBar } from './components/TopBar/TopBar'
 import { Sidebar } from './components/Sidebar/Sidebar'
 import { Viewport } from './components/Viewport/Viewport'
@@ -72,6 +72,9 @@ export default function App() {
   const [keyframes, setKeyframes] = useState<KeyframeMap>({})
   const [selectedKf, setSelectedKf] = useState<KeyframeRef | null>(null)
   const [processed, setProcessed] = useState<ImageBitmap | null>(null)
+  /** What the viewport draws: the crisp processed bitmap, or the
+   *  post-softened composite at output resolution. */
+  const [displayBmp, setDisplayBmp] = useState<ImageBitmap | null>(null)
   const [original, setOriginal] = useState<ImageBitmap | null>(null)
   const [progress, setProgress] = useState<ProgressState | null>(null)
   const [exportProgress, setExportProgress] = useState<ExportProgress | null>(null)
@@ -242,6 +245,30 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [effSettings.postResample, effSettings.resampling],
   )
+
+  /* Compose the display bitmap: crisp pass-through, or the softened
+   * output-resolution composite (matches every export exactly). */
+  useEffect(() => {
+    if (!processed) {
+      setDisplayBmp(null)
+      return
+    }
+    if (!postSoften) {
+      setDisplayBmp(processed)
+      return
+    }
+    let stale = false
+    compositeSoftened(processed, effSettings.pixelScale, postSoften.method)
+      .then((bmp) => {
+        if (!stale) setDisplayBmp(bmp)
+      })
+      .catch(() => {
+        if (!stale) setDisplayBmp(processed)
+      })
+    return () => {
+      stale = true
+    }
+  }, [processed, postSoften, effSettings.pixelScale])
 
   const hasAnyKeyframe = useMemo(
     () => Object.values(keyframes).some((list) => (list?.length ?? 0) > 0),
@@ -687,9 +714,9 @@ export default function App() {
       <div className="app-main">
         <Viewport
           frame={frame}
-          processed={processed}
+          processed={displayBmp}
           original={original}
-          postSoften={postSoften}
+          processedSmooth={postSoften !== null && displayBmp !== processed}
           compare={compare}
           setCompare={setCompare}
           holdOriginal={holdOriginal}

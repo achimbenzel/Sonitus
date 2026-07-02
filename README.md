@@ -90,10 +90,9 @@ src/
 ```
 
 **UI styles:** Settings → UI style switches between Aqua Glass (default),
-Aqua Light, Clean (shadcn-like), Retro XP and Custom CSS (live user
-overrides). The choice persists in localStorage; new themes are one registry
-entry in `src/themes/uiStyles.ts` plus one CSS block in
-`src/styles/themes.css`.
+Aqua Light, Clean, Experience, Signal Core and Custom CSS (user CSS file).
+The choice persists in localStorage; new themes are one registry entry in
+`src/themes/uiStyles.ts` plus one CSS block in `src/styles/themes.css`.
 
 **Key design decisions**
 
