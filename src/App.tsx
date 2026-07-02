@@ -25,8 +25,8 @@ import {
   setKeyframeEasing,
 } from './keyframes/keyframes'
 import { buildImageFrames, extractVideoFrames } from './utils/imageLoad'
-import { exportSequence, exportStill, exportSvg, type SequenceExportHandle } from './utils/export'
-import { exportGif, exportMp4 } from './utils/videoExport'
+import { exportCmykPlates, exportStill, exportSvg, type SequenceExportHandle } from './utils/export'
+import { exportGif, exportMp4, exportPngSequence } from './utils/videoExport'
 import { exportPreset, parsePreset } from './utils/presets'
 import { applyUiStyle, loadUiStyle } from './themes/uiStyles'
 import { TopBar } from './components/TopBar/TopBar'
@@ -36,6 +36,7 @@ import { Timeline } from './components/Timeline/Timeline'
 import { ProgressOverlay } from './components/ProgressOverlay/ProgressOverlay'
 import { SettingsModal } from './components/modals/SettingsModal'
 import { AboutModal } from './components/modals/AboutModal'
+import { PresetNameModal } from './components/modals/PresetNameModal'
 import type { KfControlProps } from './components/Sidebar/controls'
 
 interface Toast {
@@ -77,6 +78,7 @@ export default function App() {
   const [uiStyle, setUiStyle] = useState(loadUiStyle)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [aboutOpen, setAboutOpen] = useState(false)
+  const [presetNameOpen, setPresetNameOpen] = useState(false)
   const openInputRef = useRef<HTMLInputElement>(null)
 
   /* ---------- timeline geometry ---------- */
@@ -500,14 +502,23 @@ export default function App() {
         } else if (kind === 'svg') {
           setExportProgress({ label: 'Exporting SVG', value: null })
           await exportSvg(engine, f, still)
+        } else if (kind === 'cmyk') {
+          setExportProgress({ label: 'Exporting CMYK plates', value: null })
+          await exportCmykPlates(engine, f, still)
         } else {
           const handle: SequenceExportHandle = { cancelled: false }
           exportHandle.current = handle
           if (kind === 'sequence') {
             setExportProgress({ label: 'Exporting sequence', value: 0 })
-            await exportSequence(engine, fr, settingsAt, (v) =>
-              setExportProgress({ label: 'Exporting sequence', value: v }),
-            handle)
+            await exportPngSequence({
+              engine,
+              frames: fr,
+              totalFrames: total,
+              fps: curFps,
+              settingsAt,
+              onProgress: (v) => setExportProgress({ label: 'Exporting sequence', value: v }),
+              handle,
+            })
           } else if (kind === 'mp4') {
             setExportProgress({ label: 'Encoding MP4', value: 0 })
             await exportMp4({
@@ -549,10 +560,13 @@ export default function App() {
 
   /* ---------- presets ---------- */
 
-  const savePreset = useCallback(() => {
-    const { settings: s, fps: curFps, loop: curLoop } = stateRef.current
-    exportPreset(s, curFps, curLoop)
-  }, [])
+  const savePreset = useCallback(
+    (name: string) => {
+      const { settings: s, fps: curFps, loop: curLoop } = stateRef.current
+      exportPreset(s, curFps, curLoop, name)
+    },
+    [],
+  )
 
   const loadPreset = useCallback(
     async (file: File) => {
@@ -561,7 +575,7 @@ export default function App() {
         replaceAll(parsed.settings)
         setFps(parsed.fps)
         setLoop(parsed.loop)
-        showToast('Preset applied')
+        showToast(`Preset "${parsed.name}" applied`)
       } catch (err) {
         showToast(`Invalid preset: ${err instanceof Error ? err.message : 'unknown error'}`, true)
       }
@@ -633,7 +647,7 @@ export default function App() {
         onNewFile={newFile}
         onNewProject={newProject}
         onOpen={() => openInputRef.current?.click()}
-        onSavePreset={savePreset}
+        onSavePreset={() => setPresetNameOpen(true)}
         onLoadPreset={loadPreset}
         onOpenSettings={() => setSettingsOpen(true)}
         onOpenAbout={() => setAboutOpen(true)}
@@ -717,6 +731,9 @@ export default function App() {
         />
       )}
       {aboutOpen && <AboutModal onClose={() => setAboutOpen(false)} />}
+      {presetNameOpen && (
+        <PresetNameModal onSave={savePreset} onClose={() => setPresetNameOpen(false)} />
+      )}
     </div>
   )
 }

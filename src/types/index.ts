@@ -24,12 +24,19 @@ export type AlgorithmId =
 
 export type PaletteMode = 'mono' | 'image'
 
+/** How the source is sampled down to the processing resolution.
+ *  'bleeding' adds a stylized softened, slightly rounded "ink bleed"
+ *  feel on top of smooth sampling. */
+export type ResamplingMethod = 'nearest' | 'linear' | 'soft' | 'bleeding'
+
 /** All user-tweakable dither parameters. Kept flat so it can be
  *  hashed, serialized as a preset and diffed cheaply. */
 export interface DitherSettings {
   algorithm: AlgorithmId
   /** Internal processing width in pixels (aspect ratio preserved). */
   resolution: number
+  /** Sampling used when downscaling to the processing resolution. */
+  resampling: ResamplingMethod
   /** -100 .. 100 */
   brightness: number
   /** -100 .. 100 */
@@ -63,6 +70,7 @@ export type PipelineSettings = Omit<DitherSettings, 'resolution' | 'pixelScale'>
 export const DEFAULT_SETTINGS: DitherSettings = {
   algorithm: 'floyd-steinberg',
   resolution: 320,
+  resampling: 'linear',
   brightness: 0,
   contrast: 0,
   gamma: 1,
@@ -96,7 +104,7 @@ export interface SourceFrame {
 
 export type CompareMode = 'dithered' | 'original' | 'split'
 
-export type ExportKind = 'png' | 'jpeg' | 'svg' | 'sequence' | 'mp4' | 'gif'
+export type ExportKind = 'png' | 'jpeg' | 'svg' | 'sequence' | 'mp4' | 'gif' | 'cmyk'
 
 /* ---------- Keyframes ---------- */
 

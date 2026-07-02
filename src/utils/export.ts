@@ -122,36 +122,81 @@ export async function exportSvg(
   downloadBlob(new Blob([svg], { type: 'image/svg+xml' }), `${baseName(frame)}_dithered.svg`)
 }
 
-/* ---------- Sequence export ---------- */
+/* ---------- Shared export cancellation handle ---------- */
 
 export interface SequenceExportHandle {
   cancelled: boolean
 }
 
-export async function exportSequence(
+/* ---------- CMYK screenprint separations ---------- */
+
+/** Export the current processed frame as four separation plates
+ *  (C / M / Y / K) for screenprinting, zipped as individual PNGs.
+ *
+ *  Conversion is the standard naive RGB→CMYK formula (no ICC profile),
+ *  which is an approximation: it maximizes black generation (GCR) and
+ *  assumes idealized inks. Plates are rendered as ink coverage —
+ *  black where ink goes, white where the paper stays clean — at the
+ *  full output size (processing resolution × pixel scale). */
+export async function exportCmykPlates(
   engine: ProcessingEngine,
-  frames: SourceFrame[],
-  /** Per-frame settings so keyframed parameters are baked in. */
-  settingsAt: (i: number) => DitherSettings,
-  onProgress: (v: number) => void,
-  handle: SequenceExportHandle,
+  frame: SourceFrame,
+  settings: DitherSettings,
 ): Promise<void> {
-  const files: Record<string, Uint8Array> = {}
-  for (let i = 0; i < frames.length; i++) {
-    if (handle.cancelled) return
-    const settings = settingsAt(i)
-    const bmp = await engine.getProcessed(frames[i], settings, PRIORITY.EXPORT)
-    const canvas = scaleToCanvas(bmp, settings.pixelScale)
-    const blob = await canvas.convertToBlob({ type: 'image/png' })
-    files[`frame_${String(i + 1).padStart(4, '0')}.png`] = new Uint8Array(
-      await blob.arrayBuffer(),
-    )
-    onProgress((i + 1) / frames.length)
+  const raw = await engine.getProcessedData(frame, settings)
+  const { data, width, height } = raw
+  const n = width * height
+
+  const plates: Record<'C' | 'M' | 'Y' | 'K', Uint8ClampedArray> = {
+    C: new Uint8ClampedArray(n * 4),
+    M: new Uint8ClampedArray(n * 4),
+    Y: new Uint8ClampedArray(n * 4),
+    K: new Uint8ClampedArray(n * 4),
   }
-  if (handle.cancelled) return
-  // PNGs are already compressed — store, don't deflate.
+
+  for (let p = 0, i = 0; p < n; p++, i += 4) {
+    const a = data[i + 3] / 255
+    // Transparent pixels print nothing (treat as white paper).
+    const r = (data[i] / 255) * a + (1 - a)
+    const g = (data[i + 1] / 255) * a + (1 - a)
+    const b = (data[i + 2] / 255) * a + (1 - a)
+    const k = 1 - Math.max(r, g, b)
+    const denom = 1 - k
+    const c = denom > 0 ? (1 - r - k) / denom : 0
+    const m = denom > 0 ? (1 - g - k) / denom : 0
+    const y = denom > 0 ? (1 - b - k) / denom : 0
+    const cov: Record<'C' | 'M' | 'Y' | 'K', number> = { C: c, M: m, Y: y, K: k }
+    for (const key of ['C', 'M', 'Y', 'K'] as const) {
+      const v = Math.round(255 * (1 - cov[key])) // ink = black on white
+      const plate = plates[key]
+      plate[i] = v
+      plate[i + 1] = v
+      plate[i + 2] = v
+      plate[i + 3] = 255
+    }
+  }
+
+  const scale = Math.max(1, Math.round(settings.pixelScale))
+  const small = new OffscreenCanvas(width, height)
+  const smallCtx = small.getContext('2d')!
+  const big = new OffscreenCanvas(width * scale, height * scale)
+  const bigCtx = big.getContext('2d')!
+  bigCtx.imageSmoothingEnabled = false
+
+  const base = baseName(frame)
+  const files: Record<string, Uint8Array> = {}
+  for (const key of ['C', 'M', 'Y', 'K'] as const) {
+    smallCtx.putImageData(new ImageData(plates[key], width, height), 0, 0)
+    bigCtx.clearRect(0, 0, big.width, big.height)
+    bigCtx.drawImage(small, 0, 0, big.width, big.height)
+    const blob = await big.convertToBlob({ type: 'image/png' })
+    files[`${base}_${key}.png`] = new Uint8Array(await blob.arrayBuffer())
+  }
   const zipped = zipSync(files, { level: 0 })
-  downloadBlob(new Blob([zipped.buffer as ArrayBuffer], { type: 'application/zip' }), 'dithered_sequence.zip')
+  downloadBlob(
+    new Blob([zipped.buffer as ArrayBuffer], { type: 'application/zip' }),
+    `${base}_cmyk_plates.zip`,
+  )
 }
 
 /* Re-export for palette-aware callers. */

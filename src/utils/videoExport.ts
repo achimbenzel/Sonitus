@@ -10,6 +10,7 @@
 
 import { ArrayBufferTarget, Muxer } from 'mp4-muxer'
 import { GIFEncoder, applyPalette, quantize } from 'gifenc'
+import { zipSync } from 'fflate'
 import type { DitherSettings, SourceFrame } from '../types'
 import { PRIORITY, ProcessingEngine } from '../engine/ProcessingEngine'
 import { downloadBlob } from './export'
@@ -29,8 +30,37 @@ function sourceFrameAt(frames: SourceFrame[], i: number): SourceFrame {
   return frames.length > 1 ? frames[Math.min(i, frames.length - 1)] : frames[0]
 }
 
-/** Render one timeline frame at output size (processed × pixelScale). */
-async function renderFrame(
+/** Fixed output size for the whole animation.
+ *
+ *  The processed bitmap's size varies per frame when resolution or
+ *  pixel scale are keyframed. The viewport always stretches the result
+ *  onto the same rect, so animated resolution reads as "chunkier
+ *  pixels", never as a crop. Exports must do the same: pick one canvas
+ *  size for the entire timeline (the maximum any frame wants) and
+ *  stretch every frame onto it — otherwise later frames get cropped,
+ *  which showed up as an unintended zoom-in near the end. */
+function computeOutputSize(
+  frames: SourceFrame[],
+  totalFrames: number,
+  settingsAt: (i: number) => DitherSettings,
+): { width: number; height: number } {
+  let w = 2
+  let h = 2
+  for (let i = 0; i < totalFrames; i++) {
+    const src = sourceFrameAt(frames, i)
+    const s = settingsAt(i)
+    const scale = Math.max(1, Math.round(s.pixelScale))
+    const pw = Math.max(1, Math.min(Math.round(s.resolution), src.width))
+    const ph = Math.max(1, Math.round((pw * src.height) / src.width))
+    w = Math.max(w, pw * scale)
+    h = Math.max(h, ph * scale)
+  }
+  return { width: w, height: h }
+}
+
+/** Render one timeline frame stretched onto the fixed output canvas —
+ *  identical framing to the viewport (nearest neighbor, full rect). */
+async function renderFrameInto(
   engine: ProcessingEngine,
   frames: SourceFrame[],
   i: number,
@@ -38,17 +68,10 @@ async function renderFrame(
   canvas: OffscreenCanvas,
 ): Promise<void> {
   const bmp = await engine.getProcessed(sourceFrameAt(frames, i), settings, PRIORITY.EXPORT)
-  const scale = Math.max(1, Math.round(settings.pixelScale))
-  const w = bmp.width * scale
-  const h = bmp.height * scale
-  if (canvas.width !== w || canvas.height !== h) {
-    canvas.width = w
-    canvas.height = h
-  }
   const ctx = canvas.getContext('2d', { willReadFrequently: true })!
   ctx.imageSmoothingEnabled = false
-  ctx.clearRect(0, 0, w, h)
-  ctx.drawImage(bmp, 0, 0, w, h)
+  ctx.clearRect(0, 0, canvas.width, canvas.height)
+  ctx.drawImage(bmp, 0, 0, canvas.width, canvas.height)
 }
 
 /* ---------- MP4 ---------- */
@@ -83,16 +106,13 @@ export async function exportMp4(opts: AnimationExportOptions): Promise<void> {
   const { engine, frames, totalFrames, fps, settingsAt, onProgress, handle } = opts
   if (frames.length === 0) throw new Error('Nothing to export')
 
-  // Size comes from frame 0; H.264 requires even dimensions.
-  const canvas = new OffscreenCanvas(2, 2)
-  await renderFrame(engine, frames, 0, settingsAt(0), canvas)
-  const width = Math.max(2, canvas.width - (canvas.width % 2))
-  const height = Math.max(2, canvas.height - (canvas.height % 2))
+  // One fixed size for the whole timeline; H.264 needs even dimensions.
+  const out = computeOutputSize(frames, totalFrames, settingsAt)
+  const width = Math.max(2, out.width - (out.width % 2))
+  const height = Math.max(2, out.height - (out.height % 2))
   const { codec, muxCodec, bitrate } = await pickVideoCodec(width, height, fps)
 
-  const evenCanvas = new OffscreenCanvas(width, height)
-  const evenCtx = evenCanvas.getContext('2d')!
-  evenCtx.imageSmoothingEnabled = false
+  const canvas = new OffscreenCanvas(width, height)
 
   const muxer = new Muxer({
     target: new ArrayBufferTarget(),
@@ -111,9 +131,8 @@ export async function exportMp4(opts: AnimationExportOptions): Promise<void> {
   const frameDurUs = Math.round(1_000_000 / fps)
   for (let i = 0; i < totalFrames; i++) {
     if (handle.cancelled || encoderError) break
-    await renderFrame(engine, frames, i, settingsAt(i), canvas)
-    evenCtx.drawImage(canvas, 0, 0)
-    const vf = new VideoFrame(evenCanvas, {
+    await renderFrameInto(engine, frames, i, settingsAt(i), canvas)
+    const vf = new VideoFrame(canvas, {
       timestamp: i * frameDurUs,
       duration: frameDurUs,
     })
@@ -143,14 +162,16 @@ export async function exportGif(opts: AnimationExportOptions): Promise<void> {
   const { engine, frames, totalFrames, fps, settingsAt, onProgress, handle } = opts
   if (frames.length === 0) throw new Error('Nothing to export')
 
-  const canvas = new OffscreenCanvas(2, 2)
+  // GIF frames share one fixed size, same framing as the viewport.
+  const out = computeOutputSize(frames, totalFrames, settingsAt)
+  const canvas = new OffscreenCanvas(out.width, out.height)
   const gif = GIFEncoder()
   // GIF delay is in ms, rounded to 10ms steps by the format.
   const delay = Math.max(20, Math.round(1000 / fps))
 
   for (let i = 0; i < totalFrames; i++) {
     if (handle.cancelled) return
-    await renderFrame(engine, frames, i, settingsAt(i), canvas)
+    await renderFrameInto(engine, frames, i, settingsAt(i), canvas)
     const ctx = canvas.getContext('2d', { willReadFrequently: true })!
     const { data, width, height } = ctx.getImageData(0, 0, canvas.width, canvas.height)
     // Dithered output is already palette-limited, so 256 colors is lossless
@@ -164,4 +185,30 @@ export async function exportGif(opts: AnimationExportOptions): Promise<void> {
   gif.finish()
   const bytes = gif.bytes()
   downloadBlob(new Blob([bytes.buffer as ArrayBuffer], { type: 'image/gif' }), 'dithered.gif')
+}
+
+/* ---------- PNG sequence (timeline-aware) ---------- */
+
+/** Export the full timeline as numbered PNG frames in a ZIP. Works for
+ *  imported sequences AND keyframe animations of a single image —
+ *  duration, FPS, keyframes, easing and pixel scale are all baked in. */
+export async function exportPngSequence(opts: AnimationExportOptions): Promise<void> {
+  const { engine, frames, totalFrames, settingsAt, onProgress, handle } = opts
+  if (frames.length === 0) throw new Error('Nothing to export')
+
+  const out = computeOutputSize(frames, totalFrames, settingsAt)
+  const canvas = new OffscreenCanvas(out.width, out.height)
+  const files: Record<string, Uint8Array> = {}
+
+  for (let i = 0; i < totalFrames; i++) {
+    if (handle.cancelled) return
+    await renderFrameInto(engine, frames, i, settingsAt(i), canvas)
+    const blob = await canvas.convertToBlob({ type: 'image/png' })
+    files[`frame_${String(i + 1).padStart(4, '0')}.png`] = new Uint8Array(await blob.arrayBuffer())
+    onProgress((i + 1) / totalFrames)
+  }
+  if (handle.cancelled) return
+  // PNGs are already compressed — store, don't deflate.
+  const zipped = zipSync(files, { level: 0 })
+  downloadBlob(new Blob([zipped.buffer as ArrayBuffer], { type: 'application/zip' }), 'dithered_sequence.zip')
 }

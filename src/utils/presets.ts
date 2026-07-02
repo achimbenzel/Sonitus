@@ -12,21 +12,40 @@ import { downloadBlob } from './export'
 export interface PresetFile extends DitherSettings {
   version: 1
   app: string
+  /** User-chosen preset name (older presets may not have one). */
+  name: string
   fps: number
   loop: boolean
 }
 
-export function exportPreset(settings: DitherSettings, fps: number, loop: boolean): void {
+const DEFAULT_PRESET_NAME = 'Dither Preset'
+
+function slugify(name: string): string {
+  const slug = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+  return slug || 'dither-preset'
+}
+
+export function exportPreset(
+  settings: DitherSettings,
+  fps: number,
+  loop: boolean,
+  name?: string,
+): void {
+  const presetName = name?.trim() || DEFAULT_PRESET_NAME
   const preset: PresetFile = {
     version: 1,
     app: 'sonitus-dither',
+    name: presetName,
     ...settings,
     fps,
     loop,
   }
   downloadBlob(
     new Blob([JSON.stringify(preset, null, 2)], { type: 'application/json' }),
-    'dither-preset.json',
+    `${slugify(presetName)}.json`,
   )
 }
 
@@ -61,6 +80,8 @@ export interface ParsedPreset {
   settings: DitherSettings
   fps: number
   loop: boolean
+  /** Preset name; older files without one fall back to a default. */
+  name: string
 }
 
 export function parsePreset(json: string): ParsedPreset {
@@ -83,11 +104,19 @@ export function parsePreset(json: string): ParsedPreset {
   if (paletteMode !== 'mono' && paletteMode !== 'image') {
     throw new Error('paletteMode must be "mono" or "image"')
   }
+  const resampling = obj.resampling ?? DEFAULT_SETTINGS.resampling
+  if (
+    resampling !== 'nearest' && resampling !== 'linear' &&
+    resampling !== 'soft' && resampling !== 'bleeding'
+  ) {
+    throw new Error('resampling must be nearest, linear, soft or bleeding')
+  }
 
   const d = DEFAULT_SETTINGS
   const settings: DitherSettings = {
     algorithm: algorithm as DitherSettings['algorithm'],
     resolution: Math.round(num(obj, 'resolution', 8, 1024, d.resolution)),
+    resampling,
     brightness: num(obj, 'brightness', -100, 100, d.brightness),
     contrast: num(obj, 'contrast', -100, 100, d.contrast),
     gamma: num(obj, 'gamma', 0.2, 3, d.gamma),
@@ -106,5 +135,6 @@ export function parsePreset(json: string): ParsedPreset {
     settings,
     fps: Math.round(num(obj, 'fps', 1, 60, 12)),
     loop: bool(obj, 'loop', true),
+    name: typeof obj.name === 'string' && obj.name.trim() !== '' ? obj.name.trim() : DEFAULT_PRESET_NAME,
   }
 }

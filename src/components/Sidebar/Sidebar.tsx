@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Clapperboard, Download, FileArchive, Film, ImagePlus, Images, X } from 'lucide-react'
+import { Clapperboard, Download, FileArchive, Film, ImagePlus, Images, Layers, X } from 'lucide-react'
 import type { DitherSettings, ExportKind, KeyframableParam, ProjectKind } from '../../types'
 import { DEFAULT_SETTINGS } from '../../types'
 import { ALGORITHMS, isErrorDiffusion } from '../../dither/algorithms/index'
@@ -173,6 +173,17 @@ export function Sidebar({
           unit="px"
           kf={kfControl('resolution')}
           onChange={(v) => updateParam('resolution', v)}
+        />
+        <SelectRow
+          label="Resampling"
+          value={settings.resampling}
+          options={[
+            { value: 'nearest', label: 'Nearest' },
+            { value: 'linear', label: 'Linear' },
+            { value: 'soft', label: 'Soft' },
+            { value: 'bleeding', label: 'Bleeding Soft' },
+          ]}
+          onChange={(v) => update({ resampling: v as DitherSettings['resampling'] })}
         />
         <ToggleRow
           label="Serpentine scan"
@@ -356,9 +367,9 @@ export function Sidebar({
           </button>
           <button
             className="btn btn--sm"
-            disabled={frameCount < 2 || exporting}
+            disabled={frameCount === 0 || exporting}
             onClick={() => onExport('sequence')}
-            title="All frames as PNG files in a ZIP"
+            title="Timeline as numbered PNG frames in a ZIP (keyframe animations included)"
           >
             <FileArchive size={14} /> Sequence
           </button>
@@ -377,6 +388,14 @@ export function Sidebar({
             title="Timeline as animated GIF (duration, FPS and keyframes apply)"
           >
             <Clapperboard size={14} /> GIF
+          </button>
+          <button
+            className="btn btn--sm"
+            disabled={frameCount === 0 || exporting}
+            onClick={() => onExport('cmyk')}
+            title="Export screenprint separations: C/M/Y/K plates as PNGs in a ZIP (approximate RGB→CMYK conversion, no ICC profile)"
+          >
+            <Layers size={14} /> CMYK
           </button>
         </div>
 

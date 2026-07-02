@@ -25,6 +25,7 @@ export function processImage(src: RawImage, s: PipelineSettings): RawImage {
   const data = new Uint8ClampedArray(src.data)
 
   applyToneLut(data, s)
+  applyResampling(data, width, height, s)
   const blurRadius = Math.round(s.preBlur)
   if (blurRadius > 0) boxBlurRgb(data, width, height, blurRadius)
 
@@ -49,6 +50,34 @@ function applyToneLut(data: Uint8ClampedArray, s: PipelineSettings): void {
     x = 255 * Math.pow(Math.min(1, Math.max(0, x / 255)), invGamma)
     if (s.invert) x = 255 - x
     lut[v] = x
+  }
+  for (let i = 0; i < data.length; i += 4) {
+    data[i] = lut[data[i]]
+    data[i + 1] = lut[data[i + 1]]
+    data[i + 2] = lut[data[i + 2]]
+  }
+}
+
+/** Resampling character pass, applied at processing resolution.
+ *  - nearest / linear: sampling alone (handled during downscale).
+ *  - soft: a gentle 1px blur takes the edge off hard details.
+ *  - bleeding: blur + a smoothstep midtone expansion. The blur lets
+ *    neighbouring tones flow into each other and the S-curve pulls
+ *    them back apart, which rounds corners and makes shapes "bleed"
+ *    like ink on paper without crushing the image. */
+function applyResampling(data: Uint8ClampedArray, w: number, h: number, s: PipelineSettings): void {
+  if (s.resampling === 'soft') {
+    boxBlurRgb(data, w, h, 1)
+    return
+  }
+  if (s.resampling !== 'bleeding') return
+  boxBlurRgb(data, w, h, 2)
+  const lut = new Uint8ClampedArray(256)
+  for (let v = 0; v < 256; v++) {
+    const t = v / 255
+    const smooth = t * t * (3 - 2 * t) // smoothstep
+    // Blend keeps it predictable: 70% rounded curve, 30% original tone.
+    lut[v] = 255 * (0.7 * smooth + 0.3 * t)
   }
   for (let i = 0; i < data.length; i += 4) {
     data[i] = lut[data[i]]

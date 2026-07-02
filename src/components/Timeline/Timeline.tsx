@@ -48,6 +48,8 @@ import { kfToggleTitle, type KfControlProps } from '../Sidebar/controls'
 
 const LABEL_W = 200
 const RULER_H = 28
+/** Parameter rows are two lines tall: name row + keyframe-mode chip. */
+const PARAM_ROW_H = 44
 const ROW_H = 26
 const MIN_BODY_H = 96
 const MAX_BODY_H = 420
@@ -540,6 +542,7 @@ export function Timeline({
       </div>
 
       {/* ---------- tracks ---------- */}
+      <div className="tl-body">
       <div
         ref={scrollRef}
         className="tl-scroll"
@@ -590,50 +593,68 @@ export function Timeline({
           {paramRows.map((param) => {
             const { list, pos, prev, next } = rowNav(param)
             const kc = kfControl(param)
+            const chipText = !kc.at ? 'Set key' : kc.dirty ? 'Save key' : 'Remove'
             return (
-              <div key={param} className="tl-row" style={{ height: ROW_H }}>
-                <div className="tl-row-label">
+              <div key={param} className="tl-row" style={{ height: PARAM_ROW_H }}>
+                <div className="tl-row-label tl-row-label--param">
+                  <div className="tl-row-line1">
+                    <Diamond size={8} className="tl-rowico" fill="currentColor" />
+                    <span className="tl-rowname">{PARAM_LABELS[param]}</span>
+                    <span className="tl-rownav">
+                      <button
+                        disabled={!prev}
+                        onClick={() => {
+                          if (prev) {
+                            onSeek(prev.frame)
+                            onSelectKf({ param, frame: prev.frame })
+                          }
+                        }}
+                        aria-label={`Previous ${PARAM_LABELS[param]} keyframe`}
+                        title="Previous keyframe"
+                      >
+                        <ChevronLeft size={10} strokeWidth={3} />
+                      </button>
+                      {pos}/{list.length}
+                      <button
+                        disabled={!next}
+                        onClick={() => {
+                          if (next) {
+                            onSeek(next.frame)
+                            onSelectKf({ param, frame: next.frame })
+                          }
+                        }}
+                        aria-label={`Next ${PARAM_LABELS[param]} keyframe`}
+                        title="Next keyframe"
+                      >
+                        <ChevronRight size={10} strokeWidth={3} />
+                      </button>
+                    </span>
+                  </div>
+                  {/* keyframe-mode button on its own line, clearly bordered */}
                   <button
                     type="button"
-                    className={`kf-diamond${kc.at ? ' at' : ''}${kc.dirty ? ' dirty' : ''}`}
+                    className={`tl-kfchip${kc.at ? ' at' : ''}${kc.dirty ? ' dirty' : ''}`}
                     onClick={kc.onToggle}
                     title={kfToggleTitle(kc.at, kc.dirty)}
                     aria-label={`${PARAM_LABELS[param]}: ${kfToggleTitle(kc.at, kc.dirty)}`}
                   >
-                    <Diamond size={9} strokeWidth={2.5} fill={kc.at ? 'currentColor' : 'none'} />
+                    <Diamond size={8} strokeWidth={2.5} fill={kc.at ? 'currentColor' : 'none'} />
+                    {chipText}
                   </button>
-                  <span className="tl-rowname">{PARAM_LABELS[param]}</span>
-                  <span className="tl-rownav">
-                    <button
-                      disabled={!prev}
-                      onClick={() => {
-                        if (prev) {
-                          onSeek(prev.frame)
-                          onSelectKf({ param, frame: prev.frame })
-                        }
-                      }}
-                      aria-label={`Previous ${PARAM_LABELS[param]} keyframe`}
-                      title="Previous keyframe"
-                    >
-                      <ChevronLeft size={10} strokeWidth={3} />
-                    </button>
-                    {pos}/{list.length}
-                    <button
-                      disabled={!next}
-                      onClick={() => {
-                        if (next) {
-                          onSeek(next.frame)
-                          onSelectKf({ param, frame: next.frame })
-                        }
-                      }}
-                      aria-label={`Next ${PARAM_LABELS[param]} keyframe`}
-                      title="Next keyframe"
-                    >
-                      <ChevronRight size={10} strokeWidth={3} />
-                    </button>
-                  </span>
                 </div>
                 <div className="tl-lane" style={laneGrid}>
+                  {/* connecting lines between consecutive keyframes */}
+                  {list.slice(0, -1).map((k, i) => {
+                    const b = list[i + 1]
+                    return (
+                      <span
+                        key={`line-${k.frame}`}
+                        className={`tl-kfline${k.easing === 'hold' ? ' hold' : ''}`}
+                        style={{ left: k.frame * ppf, width: (b.frame - k.frame) * ppf }}
+                        aria-hidden
+                      />
+                    )
+                  })}
                   {/* per-segment easing markers between keyframe pairs */}
                   {list.slice(0, -1).map((k, i) => {
                     const b = list[i + 1]
@@ -685,11 +706,22 @@ export function Timeline({
             </div>
           )}
 
-          {/* playhead spans all rows */}
-          <div className="tl-playhead" style={{ left: LABEL_W + current * ppf }}>
+        </div>
+      </div>
+
+      {/* Playhead as a viewport overlay: it never scrolls over the
+          label column / corner panel and always spans the visible
+          track height, regardless of horizontal/vertical scrolling,
+          zooming or timeline resizing. */}
+      {(() => {
+        const x = LABEL_W + current * ppf - scrollLeft
+        if (x < LABEL_W - 1 || x > LABEL_W + viewW + 1) return null
+        return (
+          <div className="tl-playhead" style={{ left: x }} aria-hidden>
             <span className="tl-playhead-cap" />
           </div>
-        </div>
+        )
+      })()}
       </div>
 
       {/* per-segment easing menu */}

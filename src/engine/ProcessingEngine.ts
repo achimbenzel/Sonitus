@@ -104,7 +104,7 @@ export class ProcessingEngine {
    *  pixelScale is excluded — it only affects export scaling. */
   settingsHash(s: DitherSettings): string {
     return [
-      s.algorithm, s.resolution, s.brightness, s.contrast, s.gamma, s.threshold,
+      s.algorithm, s.resolution, s.resampling, s.brightness, s.contrast, s.gamma, s.threshold,
       s.preBlur, s.invert ? 1 : 0, s.serpentine ? 1 : 0, s.greyLevels,
       s.paletteMode, s.lightColor, s.darkColor, s.paletteSize,
     ].join('|')
@@ -144,7 +144,7 @@ export class ProcessingEngine {
     return p
   }
 
-  private downscale(bmp: ImageBitmap, resolution: number): RawImage {
+  private downscale(bmp: ImageBitmap, resolution: number, resampling: DitherSettings['resampling']): RawImage {
     const pw = Math.max(1, Math.min(Math.round(resolution), bmp.width))
     const ph = Math.max(1, Math.round((pw * bmp.height) / bmp.width))
     if (!this.scratch) this.scratch = new OffscreenCanvas(pw, ph)
@@ -152,8 +152,10 @@ export class ProcessingEngine {
     c.width = pw
     c.height = ph
     const ctx = c.getContext('2d', { willReadFrequently: true })!
-    ctx.imageSmoothingEnabled = true
-    ctx.imageSmoothingQuality = 'high'
+    // 'nearest' samples hard pixels; every other method starts from
+    // smooth sampling (soft/bleeding add their pass in the worker).
+    ctx.imageSmoothingEnabled = resampling !== 'nearest'
+    ctx.imageSmoothingQuality = resampling === 'linear' ? 'medium' : 'high'
     ctx.drawImage(bmp, 0, 0, pw, ph)
     return ctx.getImageData(0, 0, pw, ph) as unknown as RawImage
   }
@@ -182,7 +184,7 @@ export class ProcessingEngine {
 
     const p = (async () => {
       const src = await this.decodeSource(frame)
-      const small = this.downscale(src, settings.resolution)
+      const small = this.downscale(src, settings.resolution, settings.resampling)
       const out = await this.pool.run(small, this.pipelineSettings(settings), priority, tag ?? hash)
       const bmp = await createImageBitmap(new ImageData(out.data, out.width, out.height))
       this.processed.set(key, bmp)
@@ -196,7 +198,7 @@ export class ProcessingEngine {
   /** Like getProcessed but returns raw pixels (for SVG export). */
   async getProcessedData(frame: SourceFrame, settings: DitherSettings): Promise<RawImage> {
     const src = await this.decodeSource(frame)
-    const small = this.downscale(src, settings.resolution)
+    const small = this.downscale(src, settings.resolution, settings.resampling)
     return this.pool.run(
       small,
       this.pipelineSettings(settings),

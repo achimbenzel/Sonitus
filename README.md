@@ -147,14 +147,26 @@ cubic — and Hold/Step). Numeric values interpolate through the easing,
 colors interpolate in RGB, Hold steps. Un-keyframed parameters behave
 exactly as before.
 
-**Export** — PNG / JPEG / SVG stills (SVG merges horizontal runs into per-color
-paths), zipped PNG sequence export, MP4 (H.264 via WebCodecs, VP9-in-MP4
-fallback) and animated GIF. Animated exports bake in timeline duration, FPS
-and keyframed parameters. All exports apply the pixel scale multiplier and
-report progress inline in the sidebar Export section (cancellable).
+**Export** — PNG / JPEG / SVG stills (SVG merges horizontal runs into
+per-color paths), numbered PNG sequences (`frame_0001.png`, …, zipped — works
+for imported sequences and for keyframe animations of a single image), MP4
+(H.264 via WebCodecs, VP9-in-MP4 fallback), animated GIF, and CMYK
+screenprint separations (four ink-coverage plates `_C/_M/_Y/_K` as PNGs in a
+ZIP; naive RGB→CMYK, no ICC profile). Animated exports bake in timeline
+duration, FPS, keyframes and easing, and render every frame onto one fixed
+canvas (the maximum output size across the timeline) with the same
+nearest-neighbor framing as the viewport — keyframed resolution/pixel scale
+reads as chunkier pixels, never as a crop or zoom. Progress reports inline
+in the sidebar Export section (cancellable).
 
-**Presets** — full parameter set (incl. FPS/loop) exports as JSON; import is
-validated field-by-field with clear error messages.
+**Resampling** — Nearest / Linear / Soft / Bleeding Soft control how the
+source is sampled down to the processing resolution. Bleeding Soft adds a
+blur + smoothstep midtone expansion for a rounded, organic "ink bleed" look.
+Included in presets and applied identically in preview and export.
+
+**Presets** — full parameter set (incl. FPS/loop) exports as JSON with a
+user-chosen name (used for the filename); import is validated field-by-field
+with clear error messages and stays compatible with older, unnamed presets.
 
 **Undo/redo** — parameter history with drag coalescing. Shortcuts: `Ctrl+Z`,
 `Ctrl+Shift+Z` / `Ctrl+Y`, `Space` play/pause, `+`/`-` zoom, `0` fit,
@@ -171,6 +183,10 @@ while typing in inputs.
   large files.
 - **Keyframes are not yet stored in presets or undo history** — preset JSON
   covers the base parameters only, and Ctrl+Z does not revert keyframe edits.
+- **CMYK separation is approximate**: the standard naive RGB→CMYK formula
+  with maximum black generation, no ICC profile or dot-gain compensation.
+  Fine for screenprint separations of already-dithered art; not a match for
+  press-calibrated prepress output.
 
 - **MP4 extraction is seek-based** (fixed FPS you choose at import), not a
   demuxer — it's codec-agnostic and reliable in Chrome, but doesn't recover
