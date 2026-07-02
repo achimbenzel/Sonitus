@@ -6,7 +6,13 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "electron:dev": "node electron/dev.mjs",
+    "electron:start": "npm run build && electron .",
+    "electron:build": "npm run build && electron-builder",
+    "electron:build:win": "npm run build && electron-builder --win",
+    "electron:build:mac": "npm run build && electron-builder --mac",
+    "electron:build:linux": "npm run build && electron-builder --linux"
   },
   "dependencies": {
     "fflate": "^0.8.2",
@@ -20,7 +26,12 @@
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^43.0.0",
+    "electron-builder": "^26.15.3",
     "typescript": "~5.6.2",
     "vite": "^5.4.11"
-  }
+  },
+  "description": "Sonitus Dither Studio - professional offline image dithering app",
+  "author": "Sonitus",
+  "main": "electron/main.cjs"
 }

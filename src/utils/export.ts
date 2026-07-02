@@ -6,6 +6,7 @@
 import { zipSync } from 'fflate'
 import type { DitherSettings, RawImage, SourceFrame } from '../types'
 import { PRIORITY, ProcessingEngine } from '../engine/ProcessingEngine'
+import { postSoftenOf, softenCanvas } from './postResample'
 import { hexToRgb } from '../dither/palette'
 
 export function downloadBlob(blob: Blob, filename: string): void {
@@ -20,13 +21,16 @@ export function downloadBlob(blob: Blob, filename: string): void {
   window.setTimeout(() => URL.revokeObjectURL(url), 10_000)
 }
 
-/** Nearest-neighbor upscale of a processed bitmap by pixelScale. */
-function scaleToCanvas(bmp: ImageBitmap, scale: number): OffscreenCanvas {
-  const s = Math.max(1, Math.round(scale))
+/** Nearest-neighbor upscale of a processed bitmap by pixelScale, with
+ *  the optional post-dither softening applied as the final step. */
+function scaleToCanvas(bmp: ImageBitmap, settings: DitherSettings): OffscreenCanvas {
+  const s = Math.max(1, Math.round(settings.pixelScale))
   const c = new OffscreenCanvas(bmp.width * s, bmp.height * s)
   const ctx = c.getContext('2d')!
   ctx.imageSmoothingEnabled = false
   ctx.drawImage(bmp, 0, 0, c.width, c.height)
+  const soften = postSoftenOf(settings)
+  if (soften) softenCanvas(c, soften.method, s)
   return c
 }
 
@@ -41,7 +45,7 @@ export async function exportStill(
   format: 'png' | 'jpeg',
 ): Promise<void> {
   const bmp = await engine.getProcessed(frame, settings, PRIORITY.EXPORT)
-  const canvas = scaleToCanvas(bmp, settings.pixelScale)
+  const canvas = scaleToCanvas(bmp, settings)
   if (format === 'jpeg') {
     // JPEG has no alpha — composite over the shadow color (mono) or black.
     const flat = new OffscreenCanvas(canvas.width, canvas.height)
@@ -143,8 +147,15 @@ export async function exportCmykPlates(
   frame: SourceFrame,
   settings: DitherSettings,
 ): Promise<void> {
-  const raw = await engine.getProcessedData(frame, settings)
-  const { data, width, height } = raw
+  // Separate from the final composited output (incl. pixel scale and
+  // optional post-dither softening) so the plates match what you see.
+  const bmp = await engine.getProcessed(frame, settings, PRIORITY.EXPORT)
+  const composite = scaleToCanvas(bmp, settings)
+  const width = composite.width
+  const height = composite.height
+  const data = composite
+    .getContext('2d', { willReadFrequently: true })!
+    .getImageData(0, 0, width, height).data
   const n = width * height
 
   const plates: Record<'C' | 'M' | 'Y' | 'K', Uint8ClampedArray> = {
@@ -176,20 +187,15 @@ export async function exportCmykPlates(
     }
   }
 
-  const scale = Math.max(1, Math.round(settings.pixelScale))
-  const small = new OffscreenCanvas(width, height)
-  const smallCtx = small.getContext('2d')!
-  const big = new OffscreenCanvas(width * scale, height * scale)
-  const bigCtx = big.getContext('2d')!
-  bigCtx.imageSmoothingEnabled = false
+  // Plates are already at the full output size — encode directly.
+  const plateCanvas = new OffscreenCanvas(width, height)
+  const plateCtx = plateCanvas.getContext('2d')!
 
   const base = baseName(frame)
   const files: Record<string, Uint8Array> = {}
   for (const key of ['C', 'M', 'Y', 'K'] as const) {
-    smallCtx.putImageData(new ImageData(plates[key], width, height), 0, 0)
-    bigCtx.clearRect(0, 0, big.width, big.height)
-    bigCtx.drawImage(small, 0, 0, big.width, big.height)
-    const blob = await big.convertToBlob({ type: 'image/png' })
+    plateCtx.putImageData(new ImageData(plates[key], width, height), 0, 0)
+    const blob = await plateCanvas.convertToBlob({ type: 'image/png' })
     files[`${base}_${key}.png`] = new Uint8Array(await blob.arrayBuffer())
   }
   const zipped = zipSync(files, { level: 0 })

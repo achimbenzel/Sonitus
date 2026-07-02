@@ -308,3 +308,12 @@
 [data-theme='signal'] .iconbtn:hover:not(:disabled){
   background:linear-gradient(180deg,rgba(255,255,255,.08),rgba(124,196,16,.12));
   color:var(--accent-bright)}
+
+/* Clean theme: minimal playhead — thin neutral line, flat square cap,
+   no glow. Stays legible over ruler and rows in all scroll states. */
+[data-theme='clean'] .tl-playhead{width:1px;margin-left:0;background:#fafafa;box-shadow:none}
+[data-theme='clean'] .tl-playhead-cap{width:9px;height:9px;border-radius:2px;top:6px;
+  background:#fafafa;border:none;box-shadow:none}
+[data-theme='clean'] .tl-kfline{box-shadow:none;background:#71717a}
+[data-theme='clean'] .tl-kfline.hold{background:repeating-linear-gradient(90deg,#71717a 0 5px,transparent 5px 10px)}
+[data-theme='clean'] .tl-seg{background:#18181b}

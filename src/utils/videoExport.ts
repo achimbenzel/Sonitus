@@ -13,6 +13,7 @@ import { GIFEncoder, applyPalette, quantize } from 'gifenc'
 import { zipSync } from 'fflate'
 import type { DitherSettings, SourceFrame } from '../types'
 import { PRIORITY, ProcessingEngine } from '../engine/ProcessingEngine'
+import { drawSoftened, postSoftenOf } from './postResample'
 import { downloadBlob } from './export'
 
 export interface AnimationExportOptions {
@@ -59,7 +60,8 @@ function computeOutputSize(
 }
 
 /** Render one timeline frame stretched onto the fixed output canvas —
- *  identical framing to the viewport (nearest neighbor, full rect). */
+ *  identical framing to the viewport (nearest neighbor, full rect),
+ *  including the optional post-dither softening as the last step. */
 async function renderFrameInto(
   engine: ProcessingEngine,
   frames: SourceFrame[],
@@ -69,9 +71,14 @@ async function renderFrameInto(
 ): Promise<void> {
   const bmp = await engine.getProcessed(sourceFrameAt(frames, i), settings, PRIORITY.EXPORT)
   const ctx = canvas.getContext('2d', { willReadFrequently: true })!
-  ctx.imageSmoothingEnabled = false
   ctx.clearRect(0, 0, canvas.width, canvas.height)
-  ctx.drawImage(bmp, 0, 0, canvas.width, canvas.height)
+  const soften = postSoftenOf(settings)
+  if (soften) {
+    drawSoftened(ctx, bmp, 0, 0, canvas.width, canvas.height, soften.method, canvas.width / bmp.width)
+  } else {
+    ctx.imageSmoothingEnabled = false
+    ctx.drawImage(bmp, 0, 0, canvas.width, canvas.height)
+  }
 }
 
 /* ---------- MP4 ---------- */

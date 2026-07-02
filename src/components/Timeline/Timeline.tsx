@@ -84,6 +84,8 @@ interface TimelineProps {
   onSelectKf: (ref: KeyframeRef | null) => void
   onSetEasing: (ref: KeyframeRef, easing: EasingId) => void
   onDeleteKf: (ref: KeyframeRef) => void
+  /** Move a keyframe to another frame (drag). Overlaps are refused. */
+  onMoveKf: (param: KeyframableParam, from: number, to: number) => void
 }
 
 /** Largest "nice" step (1/2/5×10ⁿ) keeping labels ≥ minPx apart. */
@@ -133,6 +135,7 @@ export function Timeline({
   onSelectKf,
   onSetEasing,
   onDeleteKf,
+  onMoveKf,
 }: TimelineProps) {
   const rootRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -147,6 +150,48 @@ export function Timeline({
   const [easingMenu, setEasingMenu] = useState<EasingMenuState | null>(null)
   const scrubbing = useRef(false)
   const fittedFor = useRef(-1)
+  /** Fresh keyframe map for drag closures (avoids stale captures). */
+  const keyframesRef = useRef(keyframes)
+  keyframesRef.current = keyframes
+  /** Set while a keyframe drag actually moved — suppresses the click
+   *  that fires right after pointerup. */
+  const suppressKfClick = useRef(false)
+
+  /* ---------- keyframe dragging (snaps to whole frames) ---------- */
+
+  const beginKfDrag = useCallback(
+    (e: React.PointerEvent, param: KeyframableParam, startFrame: number) => {
+      if (e.button !== 0) return
+      e.stopPropagation()
+      const el = scrollRef.current
+      if (!el) return
+      const state = { frame: startFrame, moved: false }
+      const move = (ev: PointerEvent) => {
+        const rect = el.getBoundingClientRect()
+        const x = ev.clientX - rect.left + el.scrollLeft - LABEL_W
+        // Snap to whole frames, clamped to the timeline range.
+        const target = Math.min(totalFrames, Math.max(0, Math.round(x / ppf)))
+        if (target === state.frame) return
+        const list = keyframesRef.current[param] ?? []
+        // Refuse to land on another keyframe of the same parameter.
+        if (list.some((k) => k.frame === target)) return
+        onMoveKf(param, state.frame, target)
+        state.frame = target
+        state.moved = true
+      }
+      const up = () => {
+        window.removeEventListener('pointermove', move)
+        window.removeEventListener('pointerup', up)
+        if (state.moved) {
+          suppressKfClick.current = true
+          onSelectKf({ param, frame: state.frame })
+        }
+      }
+      window.addEventListener('pointermove', move)
+      window.addEventListener('pointerup', up)
+    },
+    [ppf, totalFrames, onMoveKf, onSelectKf],
+  )
 
   const hasSequence = frames.length > 1
   const paramRows = KEYFRAMABLE_PARAMS.filter((p) => (keyframes[p]?.length ?? 0) > 0)
@@ -683,10 +728,15 @@ export function Timeline({
                         selectedKf?.param === param && selectedKf.frame === k.frame ? ' selected' : ''
                       }${k.easing === 'hold' ? ' hold' : ''}`}
                       style={{ left: k.frame * ppf }}
-                      title={`${PARAM_LABELS[param]} @ frame ${k.frame + 1}`}
+                      title={`${PARAM_LABELS[param]} @ frame ${k.frame + 1} — drag to move`}
                       aria-label={`Keyframe ${PARAM_LABELS[param]} frame ${k.frame + 1}`}
+                      onPointerDown={(e) => beginKfDrag(e, param, k.frame)}
                       onClick={(e) => {
                         e.stopPropagation()
+                        if (suppressKfClick.current) {
+                          suppressKfClick.current = false
+                          return
+                        }
                         onSelectKf({ param, frame: k.frame })
                       }}
                     />

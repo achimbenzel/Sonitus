@@ -21,6 +21,24 @@ npm run build      # type-check + production build to dist/
 npm run preview    # serve the production build
 ```
 
+### Desktop (Electron)
+
+The web app doubles as a desktop app — the Electron layer lives entirely in
+`electron/` and never touches the web code:
+
+```bash
+npm run electron:dev          # vite dev server + Electron window
+npm run electron:start        # build, then run Electron against dist/
+npm run electron:build        # package for the current platform
+npm run electron:build:win    # Windows (NSIS installer)
+npm run electron:build:mac    # macOS (dmg + zip)
+npm run electron:build:linux  # Linux (AppImage + deb)
+```
+
+Packaging is configured in `electron-builder.yml`; app icon, appId and
+macOS signing/notarization are marked with TODO comments there. The
+renderer runs sandboxed with context isolation and no Node access.
+
 ## Architecture
 
 The dithering engine is fully decoupled from the UI. Data flows in one
@@ -136,16 +154,18 @@ The playhead range is [0, totalFrames]: position `totalFrames` is the exact
 end (5 s × 12 fps = 60 frames, end = 5.00 s), and ruler, counter, playhead
 and export all share this mapping.
 
-**Keyframes** — animate resolution, brightness, contrast, gamma, threshold,
-pre-blur, grey levels, pixel scale and both mono palette colors. Keyframes
-are only ever created or updated **explicitly**: changing a parameter is a
-live edit (discarded when the playhead moves); the diamond button creates a
-keyframe (no keyframe here), saves the changed value (amber "dirty" state)
-or removes the keyframe (unchanged). The "/" · "~" · "□" markers between
-keyframes open a per-segment easing menu (Linear, Ease In/Out/In-Out —
-cubic — and Hold/Step). Numeric values interpolate through the easing,
-colors interpolate in RGB, Hold steps. Un-keyframed parameters behave
-exactly as before.
+**Keyframes** — animate brightness, contrast, gamma, threshold, pre-blur,
+grey levels and both mono palette colors (resolution and pixel scale are
+plain settings by design). Keyframes are only ever created or updated
+**explicitly**: changing a parameter is a live edit (discarded when the
+playhead moves); the diamond button creates a keyframe (no keyframe here),
+saves the changed value (amber "dirty" state) or removes the keyframe
+(unchanged). Markers can be **dragged** along their row — snapped to whole
+frames, clamped to the timeline, easing preserved, overlaps refused.
+Consecutive keyframes are connected by a line, and the bordered "/" · "~" ·
+"□" chips below it open a per-segment easing menu (Linear, Ease In/Out/
+In-Out — cubic — and Hold/Step). Numeric values interpolate through the
+easing, colors interpolate in RGB, Hold steps.
 
 **Export** — PNG / JPEG / SVG stills (SVG merges horizontal runs into
 per-color paths), numbered PNG sequences (`frame_0001.png`, …, zipped — works
@@ -159,10 +179,14 @@ nearest-neighbor framing as the viewport — keyframed resolution/pixel scale
 reads as chunkier pixels, never as a crop or zoom. Progress reports inline
 in the sidebar Export section (cancellable).
 
-**Resampling** — Nearest / Linear / Soft / Bleeding Soft control how the
-source is sampled down to the processing resolution. Bleeding Soft adds a
-blur + smoothstep midtone expansion for a rounded, organic "ink bleed" look.
-Included in presets and applied identically in preview and export.
+**Post-dither resampling** — an optional final pipeline step (toggle +
+method in the Export section): after dithering and after the pixel-scale
+upscale, the enlarged dither pixels are softened/rounded (Linear / Soft /
+Bleeding Soft — the latter adds a contrast pull for swollen, ink-like
+shapes). Output dimensions and pattern size stay identical; with the toggle
+off the result is bit-for-bit crisp. Applied identically in the viewport
+preview and in PNG/JPEG, sequence, MP4, GIF and CMYK exports (SVG stays
+vector-crisp). Included in presets.
 
 **Presets** — full parameter set (incl. FPS/loop) exports as JSON with a
 user-chosen name (used for the filename); import is validated field-by-field

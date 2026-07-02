@@ -12,12 +12,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Maximize } from 'lucide-react'
 import type { CompareMode, SourceFrame } from '../../types'
+import { drawSoftened, type PostSoften } from '../../utils/postResample'
 import logoUrl from '../../assets/sonitos-logo-placeholder.svg'
 
 interface ViewportProps {
   frame: SourceFrame | null
   processed: ImageBitmap | null
   original: ImageBitmap | null
+  /** Post-dither softening (final pipeline step), or null for crisp. */
+  postSoften: PostSoften | null
   compare: CompareMode
   setCompare: (m: CompareMode) => void
   holdOriginal: boolean
@@ -50,6 +53,7 @@ export function Viewport({
   frame,
   processed,
   original,
+  postSoften,
   compare,
   setCompare,
   holdOriginal,
@@ -257,6 +261,13 @@ export function Viewport({
     }
     const drawDithered = () => {
       if (!processed) return
+      if (postSoften) {
+        // Post-dither resampling: soften the enlarged dither pixels.
+        // The radius scales with the on-screen dither pixel size, so
+        // the preview matches the exported result at any zoom.
+        drawSoftened(ctx, processed, panX, panY, dw, dh, postSoften.method, dw / processed.width)
+        return
+      }
       ctx.save()
       // Nearest neighbor: the dithered bitmap is low-res by design.
       ctx.imageSmoothingEnabled = false
@@ -284,7 +295,7 @@ export function Viewport({
     } else {
       drawDithered()
     }
-  }, [frame, processed, original, view, size, compare, splitPos, holdOriginal])
+  }, [frame, processed, original, postSoften, view, size, compare, splitPos, holdOriginal])
 
   const zoomPct = Math.round(view.zoom * 100)
 

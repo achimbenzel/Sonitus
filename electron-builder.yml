@@ -1,0 +1,55 @@
+# ============================================================
+# electron-builder configuration — Windows / macOS / Linux.
+#
+# TODO before a real release:
+#   - appId: change to your own reverse-DNS id
+#   - icon:  add build/icon.icns (mac), build/icon.ico (win) and
+#            build/icon.png (linux, 512x512), then uncomment the
+#            icon lines below
+#   - macOS code signing / notarization: set the CSC_LINK /
+#     CSC_KEY_PASSWORD env vars and add
+#       notarize: true
+#     under `mac:` together with your Apple ID credentials
+#     (APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD env vars).
+#   - Windows signing: set certificateFile/certificatePassword or
+#     use signtool env configuration.
+# ============================================================
+
+appId: com.sonitus.ditherstudio   # TODO: replace with your app id
+productName: Sonitus Dither Studio
+
+directories:
+  output: release
+
+# Only ship the built web app and the Electron entry files.
+files:
+  - dist/**
+  - electron/main.cjs
+  - electron/preload.cjs
+  - package.json
+
+# The app is fully offline — never auto-download anything at runtime.
+npmRebuild: false
+
+mac:
+  category: public.app-category.graphics-design
+  target:
+    - dmg
+    - zip
+  # icon: build/icon.icns   # TODO: add icon
+
+win:
+  target:
+    - nsis
+  # icon: build/icon.ico    # TODO: add icon
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+
+linux:
+  category: Graphics
+  target:
+    - AppImage
+    - deb
+  # icon: build/icon.png    # TODO: add icon

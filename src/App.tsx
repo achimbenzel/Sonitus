@@ -18,6 +18,7 @@ import {
   evaluateSettings,
   hasKeyframeAt,
   hasKeyframes,
+  moveKeyframe,
   nextKeyframe,
   prevKeyframe,
   removeKeyframe,
@@ -29,6 +30,7 @@ import { exportCmykPlates, exportStill, exportSvg, type SequenceExportHandle } f
 import { exportGif, exportMp4, exportPngSequence } from './utils/videoExport'
 import { exportPreset, parsePreset } from './utils/presets'
 import { applyUiStyle, loadUiStyle } from './themes/uiStyles'
+import { postSoftenOf } from './utils/postResample'
 import { TopBar } from './components/TopBar/TopBar'
 import { Sidebar } from './components/Sidebar/Sidebar'
 import { Viewport } from './components/Viewport/Viewport'
@@ -234,6 +236,13 @@ export default function App() {
     [keyframes, current, paramOverrides, toggleKf, seekTo],
   )
 
+  // Stable identity so the viewport only redraws when it changes.
+  const postSoften = useMemo(
+    () => postSoftenOf(effSettings),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [effSettings.postResample, effSettings.resampling],
+  )
+
   const hasAnyKeyframe = useMemo(
     () => Object.values(keyframes).some((list) => (list?.length ?? 0) > 0),
     [keyframes],
@@ -253,6 +262,14 @@ export default function App() {
   const deleteKeyframe = useCallback((ref: KeyframeRef) => {
     setKeyframes((kfs) => removeKeyframe(kfs, ref.param, ref.frame))
     setSelectedKf(null)
+  }, [])
+
+  /** Drag-move: keeps value + easing; overlaps are refused upstream. */
+  const moveKf = useCallback((param: KeyframableParam, from: number, to: number) => {
+    setKeyframes((kfs) => moveKeyframe(kfs, param, from, to))
+    setSelectedKf((sel) =>
+      sel && sel.param === param && sel.frame === from ? { param, frame: to } : sel,
+    )
   }, [])
 
   /* ---------- preview processing (throttled, never blocks UI) ---------- */
@@ -672,6 +689,7 @@ export default function App() {
           frame={frame}
           processed={processed}
           original={original}
+          postSoften={postSoften}
           compare={compare}
           setCompare={setCompare}
           holdOriginal={holdOriginal}
@@ -715,6 +733,7 @@ export default function App() {
         onSelectKf={setSelectedKf}
         onSetEasing={setEasing}
         onDeleteKf={deleteKeyframe}
+        onMoveKf={moveKf}
       />
 
       {progress && <ProgressOverlay progress={progress} />}

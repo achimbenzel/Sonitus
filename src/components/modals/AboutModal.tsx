@@ -61,21 +61,21 @@ export function AboutModal({ onClose }: AboutModalProps) {
         </tbody>
       </table>
       <p className="modal-note">
-        Full license texts ship with each package in <code>node_modules</code>.
+        Each library is distributed together with its full license text.
       </p>
 
       <h4 className="modal-subhead">Icons</h4>
       <p className="modal-note">
-        Lucide icons — © Lucide Contributors, ISC License. Bundled locally via the
-        <code> lucide-react</code> package; no icons are loaded from the internet.
+        Lucide icons — © Lucide Contributors, ISC License. Bundled with the app;
+        no icons are loaded from the internet.
       </p>
 
       <h4 className="modal-subhead">Fonts</h4>
       <p className="modal-note">
         DM Sans — © The DM Sans Project Authors, SIL Open Font License 1.1.<br />
         JetBrains Mono — © JetBrains, SIL Open Font License 1.1.<br />
-        Both families are bundled in <code>src/assets/fonts/</code> together with their
-        OFL license texts (<code>OFL-DMSans.txt</code>, <code>OFL-JetBrainsMono.txt</code>).
+        Both families are bundled with the app together with their OFL license
+        texts; no fonts are loaded from the internet.
       </p>
     </Modal>
   )

@@ -12,15 +12,17 @@
 import type { DitherSettings, EasingId, Keyframe, KeyframeMap, KeyframableParam } from '../types'
 import { hexToRgb } from '../dither/palette'
 
+/** Parameters that can be animated. `resolution` and `pixelScale` were
+ *  intentionally removed from this list — they stay plain settings.
+ *  Old data that still contains keyframes for them is skipped safely,
+ *  because evaluation and the timeline only ever iterate this list. */
 export const KEYFRAMABLE_PARAMS: readonly KeyframableParam[] = [
-  'resolution',
   'brightness',
   'contrast',
   'gamma',
   'threshold',
   'preBlur',
   'greyLevels',
-  'pixelScale',
   'lightColor',
   'darkColor',
 ]
@@ -142,6 +144,28 @@ export function setKeyframe(
   const next = list.filter((k) => k.frame !== frame)
   next.push({ frame, value, easing: existing?.easing ?? 'linear' })
   next.sort((a, b) => a.frame - b.frame)
+  return { ...kfs, [param]: next }
+}
+
+/** Move a keyframe to a new frame, keeping value and easing.
+ *  Refuses the move (returns the map unchanged) when the target frame
+ *  already holds another keyframe of the same parameter. */
+export function moveKeyframe(
+  kfs: KeyframeMap,
+  param: KeyframableParam,
+  from: number,
+  to: number,
+): KeyframeMap {
+  if (from === to) return kfs
+  const list = kfs[param]
+  if (!list) return kfs
+  const moving = list.find((k) => k.frame === from)
+  if (!moving) return kfs
+  if (list.some((k) => k.frame === to)) return kfs // prevent overlap
+  const next = list
+    .filter((k) => k.frame !== from)
+    .concat({ ...moving, frame: to })
+    .sort((a, b) => a.frame - b.frame)
   return { ...kfs, [param]: next }
 }
 

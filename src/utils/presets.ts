@@ -117,6 +117,7 @@ export function parsePreset(json: string): ParsedPreset {
     algorithm: algorithm as DitherSettings['algorithm'],
     resolution: Math.round(num(obj, 'resolution', 8, 1024, d.resolution)),
     resampling,
+    postResample: bool(obj, 'postResample', d.postResample),
     brightness: num(obj, 'brightness', -100, 100, d.brightness),
     contrast: num(obj, 'contrast', -100, 100, d.contrast),
     gamma: num(obj, 'gamma', 0.2, 3, d.gamma),
