@@ -23,14 +23,23 @@ export interface KfControlProps {
   has: boolean
   /** A keyframe sits exactly on the current frame. */
   at: boolean
+  /** A keyframe sits here but the live value differs from the stored one. */
+  dirty: boolean
   canPrev: boolean
   canNext: boolean
+  /** Create / save-changed-value / remove (explicit, never automatic). */
   onToggle: () => void
   onPrev: () => void
   onNext: () => void
 }
 
-export function KeyframeControl({ has, at, canPrev, canNext, onToggle, onPrev, onNext }: KfControlProps) {
+export function kfToggleTitle(at: boolean, dirty: boolean): string {
+  if (!at) return 'Add keyframe at current frame'
+  if (dirty) return 'Save changed value to this keyframe'
+  return 'Remove keyframe at current frame'
+}
+
+export function KeyframeControl({ has, at, dirty, canPrev, canNext, onToggle, onPrev, onNext }: KfControlProps) {
   return (
     <span className={`kfctl${has ? ' has' : ''}`}>
       {has && (
@@ -47,10 +56,10 @@ export function KeyframeControl({ has, at, canPrev, canNext, onToggle, onPrev, o
       )}
       <button
         type="button"
-        className={`kf-diamond${at ? ' at' : ''}`}
+        className={`kf-diamond${at ? ' at' : ''}${dirty ? ' dirty' : ''}`}
         onClick={onToggle}
-        title={at ? 'Remove keyframe at current frame' : 'Add keyframe at current frame'}
-        aria-label={at ? 'Remove keyframe' : 'Add keyframe'}
+        title={kfToggleTitle(at, dirty)}
+        aria-label={kfToggleTitle(at, dirty)}
         aria-pressed={at}
       >
         <Diamond size={9} strokeWidth={2.5} fill={at ? 'currentColor' : 'none'} />

@@ -1,26 +1,34 @@
 /* ============================================================
    Timeline — creative-software layout (modelled on the
-   Ditherfield reference):
+   Ditherfield reference screenshots):
 
-   ┌ transport ─ play/step controls · counter · FPS/DUR · easing ┐
+   ┌ drag handle (resize) ───────────────────────────────────────┐
+   ├ transport: ⏮ ◀ ▶ ▶ ⏭ ⟳ · counter/FPS/DUR (center) · zoom ─┤
    ├ PROPERTY column │ ruler with time markers ──────────────────┤
    │ Source          │ (compact thumbnails for sequences)        │
-   │ ◆ Brightness ‹› │ ─────◆──────────◆─────                    │
-   │ ◆ Contrast   ‹› │ ──◆────────◆──────────                    │
+   │ ◆ Brightness ‹› │ ──◆────/────◆──────                       │
+   │ ◆ Contrast   ‹› │ ◆──~──────◆────────                       │
    └──────────────────────────────────────────────────────────────┘
 
-   - One row per keyframed parameter; rows scroll vertically,
-     time scrolls horizontally — both in a single container with
-     sticky header (ruler) and sticky label column.
-   - The playhead spans all rows and stays visible while scrolling.
-   - Clicking a keyframe selects it; the transport then shows an
-     easing dropdown (Linear / Ease In / Out / In-Out / Hold) and
-     a delete button for the selected keyframe.
-   - Scrubbing: drag anywhere on the ruler or an empty lane spot.
+   Position model: the playhead lives on [0, totalFrames] where
+   position `totalFrames` is the EXACT end of the timeline
+   (5 s × 12 fps → 60 frames, end position = 5.00 s). Content at the
+   end position is the last frame; ruler, counter and playhead all
+   share this mapping, so there are no off-by-one drifts.
+
+   - One row per keyframed parameter with its own keyframe toggle
+     (create / save-changed / remove) and ‹n/n› navigation.
+   - Markers sit at frame*ppf, exactly like the playhead — no drift
+     when zooming or scrolling.
+   - The "/" | "~" | "□" markers between keyframes open a per-segment
+     easing menu (Linear / Ease In / Out / In-Out / Hold).
+   - The top edge is a drag handle: resize the timeline vertically
+     (clamped, persisted to localStorage).
    ============================================================ */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
+  Check,
   ChevronLeft,
   ChevronRight,
   Diamond,
@@ -36,22 +44,27 @@ import {
 import type { EasingId, KeyframeMap, KeyframeRef, KeyframableParam, SourceFrame } from '../../types'
 import { EASINGS, KEYFRAMABLE_PARAMS, PARAM_LABELS } from '../../keyframes/keyframes'
 import { NumberField } from '../ui/NumberField'
-import { Select } from '../ui/Select'
+import { kfToggleTitle, type KfControlProps } from '../Sidebar/controls'
 
-const LABEL_W = 176
+const LABEL_W = 200
 const RULER_H = 28
 const ROW_H = 26
-const MAX_BODY_H = 186
+const MIN_BODY_H = 96
+const MAX_BODY_H = 420
+const DEFAULT_BODY_H = 150
+const BODY_H_KEY = 'sonitus.timelineHeight'
+/** Extra content width so the end tick, label and playhead cap stay visible. */
+const TAIL_PAD = 16
 const MIN_PPF = 0.5
 const MAX_PPF = 40
-
-const EASING_OPTIONS = EASINGS.map((e) => ({ value: e.id, label: e.label }))
 
 interface TimelineProps {
   frames: SourceFrame[]
   totalFrames: number
+  /** Playhead position ∈ [0, totalFrames]; totalFrames = exact end. */
   current: number
   onSeek: (index: number) => void
+  kfControl: (param: KeyframableParam) => KfControlProps
   playing: boolean
   onTogglePlay: () => void
   fps: number
@@ -79,9 +92,21 @@ function pickLabelStep(pxPerUnit: number, minPx: number): number {
   return 1000
 }
 
-function formatTime(frame: number, fps: number): string {
-  const t = fps > 0 ? frame / fps : 0
-  return `${t.toFixed(2)}s`
+function clampBodyH(v: number): number {
+  return Math.min(MAX_BODY_H, Math.max(MIN_BODY_H, Math.round(v)))
+}
+
+function easingGlyph(easing: EasingId | undefined): string {
+  if (easing === 'hold') return '□'
+  if (!easing || easing === 'linear') return '/'
+  return '~'
+}
+
+interface EasingMenuState {
+  param: KeyframableParam
+  frame: number
+  left: number
+  bottom: number
 }
 
 export function Timeline({
@@ -89,6 +114,7 @@ export function Timeline({
   totalFrames,
   current,
   onSeek,
+  kfControl,
   playing,
   onTogglePlay,
   fps,
@@ -106,17 +132,42 @@ export function Timeline({
   onSetEasing,
   onDeleteKf,
 }: TimelineProps) {
+  const rootRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [ppf, setPpf] = useState(8) // pixels per frame
   const [viewW, setViewW] = useState(0) // ruler viewport width (excl. labels)
   const [scrollLeft, setScrollLeft] = useState(0)
+  const [bodyH, setBodyH] = useState(() => {
+    const stored = Number(localStorage.getItem(BODY_H_KEY))
+    return Number.isFinite(stored) && stored > 0 ? clampBodyH(stored) : DEFAULT_BODY_H
+  })
+  const [easingMenu, setEasingMenu] = useState<EasingMenuState | null>(null)
   const scrubbing = useRef(false)
   const fittedFor = useRef(-1)
 
   const hasSequence = frames.length > 1
   const paramRows = KEYFRAMABLE_PARAMS.filter((p) => (keyframes[p]?.length ?? 0) > 0)
-  const virtualW = Math.max(1, Math.ceil(totalFrames * ppf))
+  const virtualW = Math.max(1, Math.ceil(totalFrames * ppf) + TAIL_PAD)
+
+  /* ---------- vertical resize (drag handle at the top edge) ---------- */
+
+  useEffect(() => {
+    localStorage.setItem(BODY_H_KEY, String(bodyH))
+  }, [bodyH])
+
+  const onResizeStart = (e: React.PointerEvent) => {
+    e.preventDefault()
+    const startY = e.clientY
+    const startH = bodyH
+    const move = (ev: PointerEvent) => setBodyH(clampBodyH(startH + (startY - ev.clientY)))
+    const up = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+  }
 
   /* ---------- sizing / fit ---------- */
 
@@ -131,7 +182,7 @@ export function Timeline({
 
   const fit = useCallback(() => {
     if (viewW <= 0) return
-    setPpf(Math.min(20, Math.max(MIN_PPF, (viewW - 12) / totalFrames)))
+    setPpf(Math.min(20, Math.max(MIN_PPF, (viewW - TAIL_PAD - 4) / totalFrames)))
     const el = scrollRef.current
     if (el) el.scrollLeft = 0
   }, [viewW, totalFrames])
@@ -184,7 +235,8 @@ export function Timeline({
       if (!el) return
       const rect = el.getBoundingClientRect()
       const x = clientX - rect.left + el.scrollLeft - LABEL_W
-      onSeek(Math.min(totalFrames - 1, Math.max(0, Math.floor(x / ppf))))
+      // Clamp to [0, totalFrames]: the end boundary is a valid position.
+      onSeek(Math.min(totalFrames, Math.max(0, Math.floor(x / ppf))))
     },
     [onSeek, ppf, totalFrames],
   )
@@ -200,6 +252,52 @@ export function Timeline({
       el.scrollLeft = Math.max(0, x - visible * 0.15)
     }
   }, [current, ppf])
+
+  /* ---------- delete selected keyframe with Del/Backspace ---------- */
+
+  useEffect(() => {
+    if (!selectedKf) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Delete' && e.key !== 'Backspace') return
+      const t = e.target as HTMLElement | null
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
+      e.preventDefault()
+      onDeleteKf(selectedKf)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [selectedKf, onDeleteKf])
+
+  /* ---------- easing menu (outside click / Escape closes) ---------- */
+
+  useEffect(() => {
+    if (!easingMenu) return
+    const close = (e: PointerEvent) => {
+      if (!(e.target as HTMLElement).closest('.tl-easemenu')) setEasingMenu(null)
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setEasingMenu(null)
+    }
+    window.addEventListener('pointerdown', close)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('pointerdown', close)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [easingMenu])
+
+  const openEasingMenu = (param: KeyframableParam, frame: number, target: HTMLElement) => {
+    const root = rootRef.current
+    if (!root) return
+    const rootRect = root.getBoundingClientRect()
+    const btnRect = target.getBoundingClientRect()
+    setEasingMenu({
+      param,
+      frame,
+      left: Math.min(rootRect.width - 168, Math.max(4, btnRect.left - rootRect.left - 20)),
+      bottom: rootRect.bottom - btnRect.top + 6,
+    })
+  }
 
   /* ---------- ruler drawing ---------- */
 
@@ -221,27 +319,27 @@ export function Timeline({
     const colBuffer = css.getPropertyValue('--sq-peach').trim() || '#54d6cf'
 
     const first = Math.max(0, Math.floor(scrollLeft / ppf))
-    const last = Math.min(totalFrames - 1, Math.ceil((scrollLeft + viewW) / ppf))
+    const last = Math.min(totalFrames, Math.ceil((scrollLeft + viewW) / ppf))
 
     // Minor frame ticks when zoomed in enough to resolve them.
     if (ppf >= 4) {
       ctx.fillStyle = colTick
       ctx.globalAlpha = 0.5
-      for (let f = first; f <= last; f++) {
+      for (let f = first; f <= Math.min(last, totalFrames - 1); f++) {
         if (f % fps === 0) continue
         ctx.fillRect(Math.round(f * ppf - scrollLeft), RULER_H - 7, 1, 5)
       }
       ctx.globalAlpha = 1
     }
 
-    // Second ticks with time labels.
+    // Second ticks with time labels (skip the end boundary; drawn below).
     ctx.font = '600 8.5px "JetBrains Mono", monospace'
     ctx.textBaseline = 'top'
     const secStep = pickLabelStep(ppf * fps, 56)
-    for (let s = Math.floor(first / fps); s * fps <= last + fps; s++) {
+    for (let s = Math.floor(first / fps); s * fps <= last; s++) {
       if (s % secStep !== 0) continue
       const f = s * fps
-      if (f > totalFrames) break
+      if (f >= totalFrames) break
       const x = Math.round(f * ppf - scrollLeft)
       ctx.fillStyle = colTick
       ctx.fillRect(x, RULER_H - 12, 1, 12)
@@ -249,10 +347,24 @@ export function Timeline({
       ctx.fillText(`${s}s`, x + 4, 3)
     }
 
+    // The exact end boundary always gets a tick + right-aligned label,
+    // so the timeline visibly ends at e.g. 5.00s — never one frame short.
+    {
+      const endX = Math.round(totalFrames * ppf - scrollLeft)
+      if (endX >= -60 && endX <= viewW + 60) {
+        ctx.fillStyle = colTick
+        ctx.fillRect(endX, RULER_H - 14, 1, 14)
+        const totalSec = totalFrames / fps
+        const label = Number.isInteger(totalSec) ? `${totalSec}s` : `${totalSec.toFixed(2)}s`
+        ctx.fillStyle = colTextStrong
+        ctx.fillText(label, endX - ctx.measureText(label).width - 4, 3)
+      }
+    }
+
     // Frame-number labels when zoomed far in.
     if (ppf >= 26) {
       ctx.fillStyle = colText
-      for (let f = first; f <= last; f++) {
+      for (let f = first; f <= Math.min(last, totalFrames - 1); f++) {
         if (f % fps === 0) continue
         ctx.fillText(String(f + 1), Math.round(f * ppf - scrollLeft) + 3, RULER_H - 22)
       }
@@ -263,8 +375,9 @@ export function Timeline({
       ctx.fillStyle = colBuffer
       ctx.globalAlpha = 0.75
       let runStart = -1
-      for (let f = first; f <= last + 1; f++) {
-        const buffered = f <= last && bufferedAt(f)
+      const lastContent = Math.min(last, totalFrames - 1)
+      for (let f = first; f <= lastContent + 1; f++) {
+        const buffered = f <= lastContent && bufferedAt(f)
         if (buffered && runStart === -1) runStart = f
         if (!buffered && runStart !== -1) {
           ctx.fillRect(runStart * ppf - scrollLeft, RULER_H - 2, (f - runStart) * ppf, 2)
@@ -289,7 +402,7 @@ export function Timeline({
           src={src.thumb}
           alt=""
           draggable={false}
-          style={{ left: f * ppf, width: tileFrames * ppf }}
+          style={{ left: f * ppf, width: Math.min(tileFrames, totalFrames - f) * ppf }}
         />,
       )
     }
@@ -305,125 +418,137 @@ export function Timeline({
     return { list, pos: atOrBefore, prev, next }
   }
 
-  const selectedList = selectedKf ? keyframes[selectedKf.param] ?? [] : []
-  const selectedKeyframe = selectedKf
-    ? selectedList.find((k) => k.frame === selectedKf.frame) ?? null
-    : null
+  // Vertical gridline per second across all lanes (reference style).
+  const laneGrid: React.CSSProperties = {
+    backgroundImage:
+      'linear-gradient(90deg, color-mix(in srgb, var(--line) 65%, transparent) 1px, transparent 1px)',
+    backgroundSize: `${fps * ppf}px 100%`,
+  }
+
+  const contentFrame = Math.min(current, totalFrames - 1)
+  const timeNow = fps > 0 ? current / fps : 0
+  const timeTotal = fps > 0 ? totalFrames / fps : 0
+  const menuKf = easingMenu ? keyframes[easingMenu.param]?.find((k) => k.frame === easingMenu.frame) : null
 
   return (
-    <div className="timeline">
-      {/* ---------- transport ---------- */}
+    <div className="timeline" ref={rootRef}>
+      {/* drag handle: resize the timeline vertically */}
+      <div
+        className="tl-resize"
+        onPointerDown={onResizeStart}
+        title="Drag to resize the timeline"
+        role="separator"
+        aria-orientation="horizontal"
+        aria-label="Resize timeline"
+      >
+        <span />
+      </div>
+
+      {/* ---------- transport (left · center · right) ---------- */}
       <div className="timeline-controls">
-        <span className="tl-transport">
-          <button className="iconbtn" onClick={() => onSeek(0)} title="Jump to start" aria-label="Jump to start">
-            <SkipBack size={13} />
-          </button>
-          <button className="iconbtn" onClick={() => onSeek(Math.max(0, current - 1))} title="Previous frame (←)" aria-label="Previous frame">
-            <ChevronLeft size={14} />
-          </button>
-          <button className="tl-play" onClick={onTogglePlay} title="Play / pause (Space)">
-            {playing ? <Pause size={15} fill="currentColor" /> : <Play size={15} fill="currentColor" />}
-          </button>
-          <button className="iconbtn" onClick={() => onSeek(Math.min(totalFrames - 1, current + 1))} title="Next frame (→)" aria-label="Next frame">
-            <ChevronRight size={14} />
-          </button>
-          <button className="iconbtn" onClick={() => onSeek(totalFrames - 1)} title="Jump to end" aria-label="Jump to end">
-            <SkipForward size={13} />
-          </button>
-          <button
-            className={`iconbtn${loop ? ' accent' : ''}`}
-            onClick={() => setLoop(!loop)}
-            title={loop ? 'Loop: on' : 'Loop: off'}
-            aria-label="Toggle loop"
-            aria-pressed={loop}
-          >
-            <Repeat size={13} />
-          </button>
-        </span>
-
-        <span className="tl-counter" title="Frame / total · time / duration">
-          {String(current + 1).padStart(3, '0')}
-          <span> / {String(totalFrames).padStart(3, '0')}</span>
-          <span className="tl-time">
-            {' '}· {formatTime(current, fps)} / {formatTime(totalFrames, fps)}
-          </span>
-        </span>
-
-        <span className="tl-field">
-          FPS
-          <NumberField value={fps} min={1} max={60} onChange={setFps} ariaLabel="Playback FPS" />
-        </span>
-
-        {!hasSequence && (
-          <span className="tl-field">
-            DUR
-            <NumberField
-              value={durationSeconds}
-              min={1}
-              max={120}
-              onChange={setDurationSeconds}
-              ariaLabel="Timeline duration in seconds"
-            />
-            s
-          </span>
-        )}
-
-        {selectedKf && selectedKeyframe && (
-          <span className="tl-easing">
-            <Diamond size={9} className="tl-easing-ico" fill="currentColor" />
-            <span className="tl-easing-label">
-              {PARAM_LABELS[selectedKf.param]} @ {selectedKf.frame + 1}
-            </span>
-            <span className="tl-easing-select">
-              <Select
-                compact
-                value={selectedKeyframe.easing ?? 'linear'}
-                options={EASING_OPTIONS}
-                onChange={(v) => onSetEasing(selectedKf, v as EasingId)}
-                ariaLabel="Keyframe easing"
-              />
-            </span>
+        <span className="tl-group tl-group--left">
+          <span className="tl-transport">
+            <button className="iconbtn" onClick={() => onSeek(0)} title="Jump to start" aria-label="Jump to start">
+              <SkipBack size={13} />
+            </button>
+            <button className="iconbtn" onClick={() => onSeek(Math.max(0, current - 1))} title="Previous frame (←)" aria-label="Previous frame">
+              <ChevronLeft size={14} />
+            </button>
+            <button className="tl-play" onClick={onTogglePlay} title="Play / pause (Space)">
+              {playing ? <Pause size={15} fill="currentColor" /> : <Play size={15} fill="currentColor" />}
+            </button>
+            <button className="iconbtn" onClick={() => onSeek(Math.min(totalFrames, current + 1))} title="Next frame (→)" aria-label="Next frame">
+              <ChevronRight size={14} />
+            </button>
+            <button className="iconbtn" onClick={() => onSeek(totalFrames)} title="Jump to end" aria-label="Jump to end">
+              <SkipForward size={13} />
+            </button>
             <button
-              className="iconbtn"
-              onClick={() => onDeleteKf(selectedKf)}
-              title="Delete keyframe"
-              aria-label="Delete keyframe"
+              className={`iconbtn${loop ? ' accent' : ''}`}
+              onClick={() => setLoop(!loop)}
+              title={loop ? 'Loop: on' : 'Loop: off'}
+              aria-label="Toggle loop"
+              aria-pressed={loop}
             >
-              <Trash2 size={12} />
+              <Repeat size={13} />
             </button>
           </span>
-        )}
 
-        <span className="tl-zoom">
-          <button className="iconbtn" onClick={() => zoomAt(1 / 1.4, viewW / 2)} aria-label="Zoom timeline out" title="Zoom out (Ctrl+wheel)">
-            <ZoomOut size={13} />
-          </button>
-          <button className="iconbtn" onClick={() => zoomAt(1.4, viewW / 2)} aria-label="Zoom timeline in" title="Zoom in (Ctrl+wheel)">
-            <ZoomIn size={13} />
-          </button>
-          <button className="tl-fitbtn" onClick={fit} title="Fit timeline">
-            Fit
-          </button>
+          {selectedKf && (
+            <span className="tl-selchip" title="Selected keyframe (Del removes it)">
+              <Diamond size={9} fill="currentColor" />
+              {PARAM_LABELS[selectedKf.param]} @ {selectedKf.frame + 1}
+              <button
+                className="iconbtn"
+                onClick={() => onDeleteKf(selectedKf)}
+                title="Delete keyframe (Del)"
+                aria-label="Delete keyframe"
+              >
+                <Trash2 size={12} />
+              </button>
+            </span>
+          )}
         </span>
 
-        {/* Subtle background-work indicator — dot only, no text. */}
-        <span
-          className={`tl-workdot${buffering ? ' on' : ''}`}
-          title={buffering ? 'Buffering frames…' : undefined}
-          aria-hidden={!buffering}
-        />
+        <span className="tl-group tl-group--center">
+          <span className="tl-counter" title="Frame / total · time / duration">
+            {String(contentFrame + 1).padStart(3, '0')}
+            <span> / {String(totalFrames).padStart(3, '0')}</span>
+            <span className="tl-time">
+              {' '}| {timeNow.toFixed(2)}s / {timeTotal.toFixed(2)}s
+            </span>
+          </span>
+          <span className="tl-field">
+            FPS
+            <NumberField value={fps} min={1} max={60} onChange={setFps} ariaLabel="Playback FPS" />
+          </span>
+          {!hasSequence && (
+            <span className="tl-field">
+              DUR
+              <NumberField
+                value={durationSeconds}
+                min={1}
+                max={120}
+                onChange={setDurationSeconds}
+                ariaLabel="Timeline duration in seconds"
+              />
+              s
+            </span>
+          )}
+        </span>
+
+        <span className="tl-group tl-group--right">
+          <span className="tl-zoom">
+            <button className="iconbtn" onClick={() => zoomAt(1 / 1.4, viewW / 2)} aria-label="Zoom timeline out" title="Zoom out (Ctrl+wheel)">
+              <ZoomOut size={13} />
+            </button>
+            <button className="iconbtn" onClick={() => zoomAt(1.4, viewW / 2)} aria-label="Zoom timeline in" title="Zoom in (Ctrl+wheel)">
+              <ZoomIn size={13} />
+            </button>
+            <span className="tl-zoomval">{Math.round(ppf * fps)}px/s</span>
+            <button className="tl-fitbtn" onClick={fit} title="Fit timeline">
+              Fit
+            </button>
+          </span>
+          {/* Subtle background-work indicator — dot only, no text. */}
+          <span
+            className={`tl-workdot${buffering ? ' on' : ''}`}
+            title={buffering ? 'Buffering frames…' : undefined}
+            aria-hidden={!buffering}
+          />
+        </span>
       </div>
 
       {/* ---------- tracks ---------- */}
       <div
         ref={scrollRef}
         className="tl-scroll"
-        style={{ maxHeight: MAX_BODY_H }}
+        style={{ height: bodyH }}
         onScroll={(e) => setScrollLeft((e.target as HTMLDivElement).scrollLeft)}
         onPointerDown={(e) => {
           if (e.button !== 0) return
           const t = e.target as HTMLElement
-          if (t.closest('.tl-kf') || t.closest('.tl-row-label') || t.closest('.tl-corner')) return
+          if (t.closest('.tl-kf') || t.closest('.tl-seg') || t.closest('.tl-row-label') || t.closest('.tl-corner')) return
           onSelectKf(null)
           scrubbing.current = true
           ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
@@ -442,7 +567,10 @@ export function Timeline({
         <div className="tl-content" style={{ width: LABEL_W + virtualW }}>
           {/* sticky header: corner + ruler */}
           <div className="tl-head" style={{ height: RULER_H }}>
-            <div className="tl-corner">Property</div>
+            <div className="tl-corner">
+              <span>Property</span>
+              <span className="tl-corner-kf">Keyframe</span>
+            </div>
             <canvas
               ref={canvasRef}
               className="tl-ruler"
@@ -454,18 +582,27 @@ export function Timeline({
           {thumbs && (
             <div className="tl-row tl-thumbrow" style={{ height: ROW_H }}>
               <div className="tl-row-label">Source</div>
-              <div className="tl-lane tl-lane--thumbs">{thumbs}</div>
+              <div className="tl-lane tl-lane--thumbs" style={laneGrid}>{thumbs}</div>
             </div>
           )}
 
           {/* one row per keyframed parameter */}
           {paramRows.map((param) => {
             const { list, pos, prev, next } = rowNav(param)
+            const kc = kfControl(param)
             return (
               <div key={param} className="tl-row" style={{ height: ROW_H }}>
                 <div className="tl-row-label">
-                  <Diamond size={8} className="tl-rowico" fill="currentColor" />
-                  {PARAM_LABELS[param]}
+                  <button
+                    type="button"
+                    className={`kf-diamond${kc.at ? ' at' : ''}${kc.dirty ? ' dirty' : ''}`}
+                    onClick={kc.onToggle}
+                    title={kfToggleTitle(kc.at, kc.dirty)}
+                    aria-label={`${PARAM_LABELS[param]}: ${kfToggleTitle(kc.at, kc.dirty)}`}
+                  >
+                    <Diamond size={9} strokeWidth={2.5} fill={kc.at ? 'currentColor' : 'none'} />
+                  </button>
+                  <span className="tl-rowname">{PARAM_LABELS[param]}</span>
                   <span className="tl-rownav">
                     <button
                       disabled={!prev}
@@ -496,17 +633,36 @@ export function Timeline({
                     </button>
                   </span>
                 </div>
-                <div className="tl-lane">
+                <div className="tl-lane" style={laneGrid}>
+                  {/* per-segment easing markers between keyframe pairs */}
+                  {list.slice(0, -1).map((k, i) => {
+                    const b = list[i + 1]
+                    const mid = ((k.frame + b.frame) / 2) * ppf
+                    return (
+                      <button
+                        key={`seg-${k.frame}`}
+                        className="tl-seg"
+                        style={{ left: mid }}
+                        title={`Easing: ${EASINGS.find((e) => e.id === (k.easing ?? 'linear'))?.label} — click to change`}
+                        aria-label={`Easing between frames ${k.frame + 1} and ${b.frame + 1}`}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          openEasingMenu(param, k.frame, e.currentTarget)
+                        }}
+                      >
+                        {easingGlyph(k.easing)}
+                      </button>
+                    )
+                  })}
+                  {/* keyframe markers, aligned exactly with the playhead grid */}
                   {list.map((k) => (
                     <button
                       key={k.frame}
                       className={`tl-kf${
                         selectedKf?.param === param && selectedKf.frame === k.frame ? ' selected' : ''
                       }${k.easing === 'hold' ? ' hold' : ''}`}
-                      style={{ left: k.frame * ppf + ppf / 2 }}
-                      title={`${PARAM_LABELS[param]} @ frame ${k.frame + 1} · ${
-                        EASINGS.find((e) => e.id === (k.easing ?? 'linear'))?.label
-                      }`}
+                      style={{ left: k.frame * ppf }}
+                      title={`${PARAM_LABELS[param]} @ frame ${k.frame + 1}`}
                       aria-label={`Keyframe ${PARAM_LABELS[param]} frame ${k.frame + 1}`}
                       onClick={(e) => {
                         e.stopPropagation()
@@ -523,7 +679,7 @@ export function Timeline({
           {paramRows.length === 0 && !thumbs && (
             <div className="tl-row tl-row--empty" style={{ height: ROW_H }}>
               <div className="tl-row-label tl-row-label--empty">No keyframes</div>
-              <div className="tl-lane tl-lane--empty">
+              <div className="tl-lane tl-lane--empty" style={laneGrid}>
                 <span>Click ◇ next to a parameter to animate it</span>
               </div>
             </div>
@@ -535,6 +691,29 @@ export function Timeline({
           </div>
         </div>
       </div>
+
+      {/* per-segment easing menu */}
+      {easingMenu && (
+        <div className="tl-easemenu" style={{ left: easingMenu.left, bottom: easingMenu.bottom }}>
+          {EASINGS.map((e) => {
+            const active = (menuKf?.easing ?? 'linear') === e.id
+            return (
+              <button
+                key={e.id}
+                className={active ? 'active' : ''}
+                onClick={() => {
+                  onSetEasing({ param: easingMenu.param, frame: easingMenu.frame }, e.id)
+                  setEasingMenu(null)
+                }}
+              >
+                <span className="tl-easemenu-glyph">{easingGlyph(e.id)}</span>
+                {e.label}
+                {active && <Check size={12} strokeWidth={2.5} />}
+              </button>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }

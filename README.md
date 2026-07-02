@@ -125,21 +125,27 @@ preset chip row underneath.
 ramps; image mode with median-cut palette extraction (2–32 colors).
 
 **Timeline** — always visible (default 12 FPS × 5 s when no sequence is
-loaded), laid out like creative software: transport (skip/step/play/loop),
-sticky PROPERTY column with one row per keyframed parameter (with ‹n/n›
-keyframe navigation), sticky ruler with second/frame ticks, full-height
-playhead, scrubbing, Ctrl+wheel cursor-anchored zoom + Fit, vertically
-scrollable rows with styled scrollbars, compact tiled thumbnails for
-sequences, buffered-range strip, FPS + duration inputs.
+loaded), laid out like creative software: resize grip at the top edge
+(height clamped + persisted), transport (skip/step/play/loop) on the left,
+counter/FPS/duration centered, zoom cluster (± / px-per-second readout /
+Fit) on the right. Sticky PROPERTY column with one row per keyframed
+parameter (own keyframe toggle + ‹n/n› navigation), sticky ruler, per-second
+gridlines, full-height playhead with knob cap, scrubbing, Ctrl+wheel
+cursor-anchored zoom, vertically scrollable rows, compact tiled thumbnails.
+The playhead range is [0, totalFrames]: position `totalFrames` is the exact
+end (5 s × 12 fps = 60 frames, end = 5.00 s), and ruler, counter, playhead
+and export all share this mapping.
 
 **Keyframes** — animate resolution, brightness, contrast, gamma, threshold,
-pre-blur, grey levels, pixel scale and both mono palette colors. Diamond
-toggles next to each parameter; clicking a marker in the timeline selects it
-and opens an easing editor (Linear, Ease In, Ease Out, Ease In Out,
-Hold/Step — cubic curves, per keyframe transition) plus delete. Numeric
-values interpolate through the chosen easing, colors interpolate in RGB,
-Hold steps. Editing an animated parameter writes a keyframe at the playhead;
-un-keyframed parameters behave exactly as before.
+pre-blur, grey levels, pixel scale and both mono palette colors. Keyframes
+are only ever created or updated **explicitly**: changing a parameter is a
+live edit (discarded when the playhead moves); the diamond button creates a
+keyframe (no keyframe here), saves the changed value (amber "dirty" state)
+or removes the keyframe (unchanged). The "/" · "~" · "□" markers between
+keyframes open a per-segment easing menu (Linear, Ease In/Out/In-Out —
+cubic — and Hold/Step). Numeric values interpolate through the easing,
+colors interpolate in RGB, Hold steps. Un-keyframed parameters behave
+exactly as before.
 
 **Export** — PNG / JPEG / SVG stills (SVG merges horizontal runs into per-color
 paths), zipped PNG sequence export, MP4 (H.264 via WebCodecs, VP9-in-MP4

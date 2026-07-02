@@ -85,9 +85,11 @@ export default function App() {
   const totalFrames =
     frames.length > 1 ? frames.length : Math.max(1, Math.round(fps * durationSeconds))
 
-  // Keep the playhead inside the timeline when it shrinks.
+  // Keep the playhead inside the timeline when it shrinks. The playhead
+  // position range is [0, totalFrames]: position totalFrames is the exact
+  // end of the timeline (e.g. 5.00s), showing the last frame's content.
   useEffect(() => {
-    setCurrent((c) => Math.min(c, totalFrames - 1))
+    setCurrent((c) => Math.min(c, totalFrames))
   }, [totalFrames])
 
   /** Timeline frame → source frame (sequences 1:1, stills repeat). */
@@ -101,10 +103,24 @@ export default function App() {
 
   /* ---------- keyframe-aware settings ---------- */
 
-  const effSettings = useMemo(
-    () => evaluateSettings(settings, keyframes, current),
-    [settings, keyframes, current],
-  )
+  /** Live edits to keyframed parameters. They preview immediately but
+   *  are NEVER written to a keyframe automatically — only an explicit
+   *  click on the keyframe toggle stores them. Cleared whenever the
+   *  playhead moves. */
+  const [paramOverrides, setParamOverrides] = useState<
+    Partial<Record<KeyframableParam, number | string>>
+  >({})
+
+  const effSettings = useMemo(() => {
+    const evaluated = evaluateSettings(settings, keyframes, current)
+    const keys = Object.keys(paramOverrides) as KeyframableParam[]
+    if (keys.length === 0) return evaluated
+    const out = { ...evaluated }
+    for (const k of keys) {
+      ;(out as Record<KeyframableParam, number | string>)[k] = paramOverrides[k]!
+    }
+    return out
+  }, [settings, keyframes, current, paramOverrides])
   const hash = useMemo(() => engine.settingsHash(effSettings), [engine, effSettings])
   /** Cancellation generation: changes when base settings or keyframes
    *  change, but NOT when the playhead moves (buffered frames of a
@@ -117,10 +133,19 @@ export default function App() {
   /* Refs mirroring state, for callbacks that must read latest values. */
   const stateRef = useRef({
     settings, keyframes, frames, current, hash, generation, playing, fps, loop, totalFrames,
+    effSettings, paramOverrides,
   })
   stateRef.current = {
     settings, keyframes, frames, current, hash, generation, playing, fps, loop, totalFrames,
+    effSettings, paramOverrides,
   }
+
+  /** All playhead moves go through here so pending live overrides are
+   *  dropped and the keyframed animation takes over again. */
+  const seekTo = useCallback((pos: number) => {
+    setParamOverrides((o) => (Object.keys(o).length > 0 ? {} : o))
+    setCurrent(pos)
+  }, [])
 
   const settingsAt = useCallback(
     (i: number): DitherSettings =>
@@ -141,12 +166,13 @@ export default function App() {
 
   /* ---------- keyframe editing ---------- */
 
+  /** Changing a parameter never creates or updates a keyframe.
+   *  Animated params get a live override; plain params edit the base. */
   const updateParam = useCallback(
     (param: KeyframableParam, value: number | string) => {
-      const { keyframes: kfs, current: cur } = stateRef.current
+      const { keyframes: kfs } = stateRef.current
       if (hasKeyframes(kfs, param)) {
-        // Animated parameter: edits write a keyframe at the playhead.
-        setKeyframes(setKeyframe(kfs, param, cur, value))
+        setParamOverrides((o) => ({ ...o, [param]: value }))
       } else {
         update({ [param]: value } as Partial<DitherSettings>)
       }
@@ -154,35 +180,56 @@ export default function App() {
     [update],
   )
 
+  /** Explicit keyframe action:
+   *  - no keyframe here      → create one with the current live value
+   *  - keyframe + changed    → save the changed value into it
+   *  - keyframe + unchanged  → remove it */
   const toggleKf = useCallback((param: KeyframableParam) => {
-    const { keyframes: kfs, current: cur, settings: base } = stateRef.current
+    const { keyframes: kfs, current: cur, settings: base, paramOverrides: ov } = stateRef.current
+    const override = ov[param]
     if (hasKeyframeAt(kfs, param, cur)) {
-      setKeyframes(removeKeyframe(kfs, param, cur))
+      const stored = kfs[param]!.find((k) => k.frame === cur)!.value
+      if (override !== undefined && override !== stored) {
+        setKeyframes(setKeyframe(kfs, param, cur, override))
+      } else {
+        setKeyframes(removeKeyframe(kfs, param, cur))
+      }
     } else {
-      const value = evaluateSettings(base, kfs, cur)[param]
+      const value = override !== undefined ? override : evaluateSettings(base, kfs, cur)[param]
       setKeyframes(setKeyframe(kfs, param, cur, value))
     }
+    // The live value is now stored (or discarded with the keyframe).
+    setParamOverrides((o) => {
+      if (!(param in o)) return o
+      const next = { ...o }
+      delete next[param]
+      return next
+    })
   }, [])
 
   const kfControl = useCallback(
     (param: KeyframableParam): KfControlProps => {
       const prev = prevKeyframe(keyframes, param, current)
       const next = nextKeyframe(keyframes, param, current)
+      const at = hasKeyframeAt(keyframes, param, current)
+      const override = paramOverrides[param]
+      const stored = at ? keyframes[param]!.find((k) => k.frame === current)!.value : undefined
       return {
         has: hasKeyframes(keyframes, param),
-        at: hasKeyframeAt(keyframes, param, current),
+        at,
+        dirty: at && override !== undefined && override !== stored,
         canPrev: prev !== null,
         canNext: next !== null,
         onToggle: () => toggleKf(param),
         onPrev: () => {
-          if (prev !== null) setCurrent(prev)
+          if (prev !== null) seekTo(prev)
         },
         onNext: () => {
-          if (next !== null) setCurrent(next)
+          if (next !== null) seekTo(next)
         },
       }
     },
-    [keyframes, current, toggleKf],
+    [keyframes, current, paramOverrides, toggleKf, seekTo],
   )
 
   const hasAnyKeyframe = useMemo(
@@ -212,7 +259,7 @@ export default function App() {
   const previewDirty = useRef(false)
 
   const kickPreview = useCallback(() => {
-    const { frames: fr, current: cur, hash: h, generation: gen } = stateRef.current
+    const { frames: fr, current: cur, hash: h, generation: gen, effSettings: eff } = stateRef.current
     const f = fr.length > 1 ? fr[Math.min(cur, fr.length - 1)] : fr[0]
     if (!f) {
       setProcessed(null)
@@ -224,7 +271,7 @@ export default function App() {
     }
     previewInFlight.current = true
     engine
-      .getProcessed(f, settingsAt(cur), PRIORITY.PREVIEW, gen)
+      .getProcessed(f, eff, PRIORITY.PREVIEW, gen)
       .then((bmp) => {
         // Only display if this result still matches the live state.
         const now = stateRef.current
@@ -299,19 +346,31 @@ export default function App() {
       const { fps: curFps, loop: curLoop, current: cur, frames: fr, totalFrames: total } = stateRef.current
       const frameDur = 1000 / curFps
       if (acc < frameDur) return
-      const nextIdx = cur + 1 >= total ? (curLoop ? 0 : -1) : cur + 1
-      if (nextIdx === -1) {
-        setPlaying(false)
-        return
+      // Position range is [0, total]; `total` is the exact end. Looping
+      // wraps at the end boundary, non-loop parks the playhead on it.
+      let nextPos = cur + 1
+      let stopAfter = false
+      if (nextPos >= total) {
+        if (curLoop) {
+          nextPos = 0 // looped playback wraps at the end boundary
+        } else if (cur >= total) {
+          setPlaying(false)
+          return
+        } else {
+          nextPos = total
+          stopAfter = true
+        }
       }
-      const nextFrame = fr.length > 1 ? fr[Math.min(nextIdx, fr.length - 1)] : fr[0]
+      const contentIdx = Math.min(nextPos, total - 1)
+      const nextFrame = fr.length > 1 ? fr[Math.min(contentIdx, fr.length - 1)] : fr[0]
       const ready =
         !nextFrame ||
-        engine.isCached(nextFrame, engine.settingsHash(settingsAt(nextIdx)))
+        engine.isCached(nextFrame, engine.settingsHash(settingsAt(contentIdx)))
       if (ready) {
         setBuffering(false)
         acc = Math.min(acc - frameDur, frameDur) // don't spiral after a stall
-        setCurrent(nextIdx)
+        setCurrent(nextPos)
+        if (stopAfter) setPlaying(false)
       } else {
         // Stall until workers catch up; keep the accumulator primed.
         setBuffering(true)
@@ -326,7 +385,12 @@ export default function App() {
   }, [playing, totalFrames, engine, settingsAt])
 
   const togglePlay = useCallback(() => {
-    setPlaying((p) => !p)
+    setPlaying((p) => {
+      // Starting playback discards pending live overrides so the
+      // keyframed animation plays back exactly as stored.
+      if (!p) setParamOverrides((o) => (Object.keys(o).length > 0 ? {} : o))
+      return !p
+    })
   }, [])
 
   /* ---------- imports ---------- */
@@ -532,9 +596,9 @@ export default function App() {
       } else if (e.key.toLowerCase() === 'c' && !mod && !e.repeat) {
         setHoldOriginal(true)
       } else if (e.key === 'ArrowRight' && stateRef.current.totalFrames > 1) {
-        setCurrent((c) => Math.min(stateRef.current.totalFrames - 1, c + 1))
+        seekTo(Math.min(stateRef.current.totalFrames, stateRef.current.current + 1))
       } else if (e.key === 'ArrowLeft' && stateRef.current.totalFrames > 1) {
-        setCurrent((c) => Math.max(0, c - 1))
+        seekTo(Math.max(0, stateRef.current.current - 1))
       }
     }
     const onKeyUp = (e: KeyboardEvent) => {
@@ -546,7 +610,7 @@ export default function App() {
       window.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('keyup', onKeyUp)
     }
-  }, [undo, redo, togglePlay])
+  }, [undo, redo, togglePlay, seekTo])
 
   /* ---------- render ---------- */
 
@@ -619,7 +683,8 @@ export default function App() {
         frames={frames}
         totalFrames={totalFrames}
         current={current}
-        onSeek={(i) => setCurrent(Math.min(totalFrames - 1, Math.max(0, i)))}
+        onSeek={(i) => seekTo(Math.min(totalFrames, Math.max(0, i)))}
+        kfControl={kfControl}
         playing={playing}
         onTogglePlay={togglePlay}
         fps={fps}
