@@ -2,9 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type {
   CompareMode,
   DitherSettings,
+  EasingId,
   ExportKind,
   KeyframableParam,
   KeyframeMap,
+  KeyframeRef,
   ProgressState,
   ProjectKind,
   SourceFrame,
@@ -13,7 +15,6 @@ import { DEFAULT_SETTINGS } from './types'
 import { PRIORITY, ProcessingEngine } from './engine/ProcessingEngine'
 import { useSettingsHistory } from './hooks/useSettingsHistory'
 import {
-  allKeyframeFrames,
   evaluateSettings,
   hasKeyframeAt,
   hasKeyframes,
@@ -21,6 +22,7 @@ import {
   prevKeyframe,
   removeKeyframe,
   setKeyframe,
+  setKeyframeEasing,
 } from './keyframes/keyframes'
 import { buildImageFrames, extractVideoFrames } from './utils/imageLoad'
 import { exportSequence, exportStill, exportSvg, type SequenceExportHandle } from './utils/export'
@@ -65,6 +67,7 @@ export default function App() {
   const [compare, setCompare] = useState<CompareMode>('dithered')
   const [holdOriginal, setHoldOriginal] = useState(false)
   const [keyframes, setKeyframes] = useState<KeyframeMap>({})
+  const [selectedKf, setSelectedKf] = useState<KeyframeRef | null>(null)
   const [processed, setProcessed] = useState<ImageBitmap | null>(null)
   const [original, setOriginal] = useState<ImageBitmap | null>(null)
   const [progress, setProgress] = useState<ProgressState | null>(null)
@@ -182,7 +185,26 @@ export default function App() {
     [keyframes, current, toggleKf],
   )
 
-  const keyframeFrames = useMemo(() => allKeyframeFrames(keyframes), [keyframes])
+  const hasAnyKeyframe = useMemo(
+    () => Object.values(keyframes).some((list) => (list?.length ?? 0) > 0),
+    [keyframes],
+  )
+
+  // Drop a stale selection when its keyframe disappears.
+  useEffect(() => {
+    if (selectedKf && !hasKeyframeAt(keyframes, selectedKf.param, selectedKf.frame)) {
+      setSelectedKf(null)
+    }
+  }, [keyframes, selectedKf])
+
+  const setEasing = useCallback((ref: KeyframeRef, easing: EasingId) => {
+    setKeyframes((kfs) => setKeyframeEasing(kfs, ref.param, ref.frame, easing))
+  }, [])
+
+  const deleteKeyframe = useCallback((ref: KeyframeRef) => {
+    setKeyframes((kfs) => removeKeyframe(kfs, ref.param, ref.frame))
+    setSelectedKf(null)
+  }, [])
 
   /* ---------- preview processing (throttled, never blocks UI) ---------- */
 
@@ -382,7 +404,7 @@ export default function App() {
   /* New Project: clear source AND reset every parameter + keyframes. */
   const newProject = useCallback(() => {
     if (
-      (frames.length > 0 || canUndo || keyframeFrames.length > 0) &&
+      (frames.length > 0 || canUndo || hasAnyKeyframe) &&
       !window.confirm('Start a new project? This clears the source and resets all settings.')
     ) {
       return
@@ -390,11 +412,12 @@ export default function App() {
     loadFrames([], 'none')
     replaceAll(DEFAULT_SETTINGS)
     setKeyframes({})
+    setSelectedKf(null)
     setFps(12)
     setDurationSeconds(5)
     setLoop(true)
     setCompare('dithered')
-  }, [frames.length, canUndo, keyframeFrames.length, loadFrames, replaceAll])
+  }, [frames.length, canUndo, hasAnyKeyframe, loadFrames, replaceAll])
 
   /* ---------- export ---------- */
 
@@ -607,8 +630,12 @@ export default function App() {
         setLoop={setLoop}
         bufferedAt={bufferedAt}
         buffering={buffering}
-        keyframeFrames={keyframeFrames}
         bufferTick={bufferTick}
+        keyframes={keyframes}
+        selectedKf={selectedKf}
+        onSelectKf={setSelectedKf}
+        onSetEasing={setEasing}
+        onDeleteKf={deleteKeyframe}
       />
 
       {progress && <ProgressOverlay progress={progress} />}

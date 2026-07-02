@@ -80,6 +80,7 @@
   --ink-soft:#a1a1aa;           /* zinc-400 */
   --ink-dim:#63636b;
   --sky-blue:#e4e4e7;           /* accents become neutral */
+  --sky-blue-rgb:228,228,231;
   --accent:#71717a;
   --accent-bright:#a1a1aa;
   --blue-deep:#fafafa;
@@ -147,6 +148,7 @@
   --ink-soft:#3f3f3f;
   --ink-dim:#77776b;
   --sky-blue:#0a54d5;
+  --sky-blue-rgb:10,84,213;
   --accent:#316ac5;             /* XP selection blue */
   --accent-bright:#3d95ff;
   --blue-deep:#0a54d5;

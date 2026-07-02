@@ -98,10 +98,6 @@ export type CompareMode = 'dithered' | 'original' | 'split'
 
 export type ExportKind = 'png' | 'jpeg' | 'svg' | 'sequence' | 'mp4' | 'gif'
 
-/* ---------- Color picker ---------- */
-
-export type ColorPickerMode = 'picker' | 'hex' | 'presets'
-
 /* ---------- Keyframes ---------- */
 
 /** Settings keys that can be animated on the timeline. */
@@ -117,11 +113,22 @@ export type KeyframableParam =
   | 'lightColor'
   | 'darkColor'
 
+/** Easing applied to the transition FROM a keyframe to the next one. */
+export type EasingId = 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out' | 'hold'
+
 export interface Keyframe {
   /** Timeline frame index the keyframe sits on. */
   frame: number
   /** Number for numeric params, hex string for color params. */
   value: number | string
+  /** Easing of the outgoing segment (default: linear). */
+  easing?: EasingId
+}
+
+/** A selected keyframe in the timeline (for easing editing etc.). */
+export interface KeyframeRef {
+  param: KeyframableParam
+  frame: number
 }
 
 /** Per-parameter keyframe lists, each kept sorted by frame. */

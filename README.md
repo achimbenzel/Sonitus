@@ -116,21 +116,29 @@ void-and-cluster blue noise, value noise). Resolution slider (internal
 processing width), brightness / contrast / gamma / threshold / pre-blur /
 invert, 2–16 grey levels, output pixel scale 1–16×.
 
+**Color input** — unified control: swatch (opens the native eyedropper) +
+validated HEX field (`#fff`, `#ff6600`, live swatch preview) with a compact
+preset chip row underneath.
+
 **Palette** — mono mode with highlight/shadow color pickers + presets
 (B/W, off-white/black, green/black, orange/black, blue/cream) and multi-level
 ramps; image mode with median-cut palette extraction (2–32 colors).
 
 **Timeline** — always visible (default 12 FPS × 5 s when no sequence is
-loaded); ruler with second/frame ticks and adaptive labels, playhead with
-scrubbing, Ctrl+wheel zoom (cursor-anchored) and horizontal wheel scroll,
-compact tiled thumbnails for sequences, keyframe diamonds, buffered-range
-strip, loop toggle, FPS + duration inputs.
+loaded), laid out like creative software: transport (skip/step/play/loop),
+sticky PROPERTY column with one row per keyframed parameter (with ‹n/n›
+keyframe navigation), sticky ruler with second/frame ticks, full-height
+playhead, scrubbing, Ctrl+wheel cursor-anchored zoom + Fit, vertically
+scrollable rows with styled scrollbars, compact tiled thumbnails for
+sequences, buffered-range strip, FPS + duration inputs.
 
 **Keyframes** — animate resolution, brightness, contrast, gamma, threshold,
 pre-blur, grey levels, pixel scale and both mono palette colors. Diamond
-toggles next to each parameter, prev/next navigation (per parameter and
-timeline-wide), linear interpolation for numbers, RGB interpolation for
-colors. Editing an animated parameter writes a keyframe at the playhead;
+toggles next to each parameter; clicking a marker in the timeline selects it
+and opens an easing editor (Linear, Ease In, Ease Out, Ease In Out,
+Hold/Step — cubic curves, per keyframe transition) plus delete. Numeric
+values interpolate through the chosen easing, colors interpolate in RGB,
+Hold steps. Editing an animated parameter writes a keyframe at the playhead;
 un-keyframed parameters behave exactly as before.
 
 **Export** — PNG / JPEG / SVG stills (SVG merges horizontal runs into per-color

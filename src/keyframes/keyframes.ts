@@ -9,7 +9,7 @@
      so non-keyframed editing is completely unaffected.
    ============================================================ */
 
-import type { DitherSettings, Keyframe, KeyframeMap, KeyframableParam } from '../types'
+import type { DitherSettings, EasingId, Keyframe, KeyframeMap, KeyframableParam } from '../types'
 import { hexToRgb } from '../dither/palette'
 
 export const KEYFRAMABLE_PARAMS: readonly KeyframableParam[] = [
@@ -24,6 +24,38 @@ export const KEYFRAMABLE_PARAMS: readonly KeyframableParam[] = [
   'lightColor',
   'darkColor',
 ]
+
+export const PARAM_LABELS: Record<KeyframableParam, string> = {
+  resolution: 'Resolution',
+  brightness: 'Brightness',
+  contrast: 'Contrast',
+  gamma: 'Gamma',
+  threshold: 'Threshold',
+  preBlur: 'Pre-blur',
+  greyLevels: 'Grey levels',
+  pixelScale: 'Pixel scale',
+  lightColor: 'Highlight',
+  darkColor: 'Shadow',
+}
+
+/* ---------- easing ---------- */
+
+export const EASINGS: { id: EasingId; label: string }[] = [
+  { id: 'linear', label: 'Linear' },
+  { id: 'ease-in', label: 'Ease In' },
+  { id: 'ease-out', label: 'Ease Out' },
+  { id: 'ease-in-out', label: 'Ease In Out' },
+  { id: 'hold', label: 'Hold / Step' },
+]
+
+/** Easing curves over normalized t ∈ [0, 1] (cubic in/out). */
+const EASING_FNS: Record<EasingId, (t: number) => number> = {
+  linear: (t) => t,
+  'ease-in': (t) => t * t * t,
+  'ease-out': (t) => 1 - Math.pow(1 - t, 3),
+  'ease-in-out': (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2),
+  hold: () => 0,
+}
 
 const INT_PARAMS = new Set<KeyframableParam>(['resolution', 'greyLevels', 'pixelScale'])
 const COLOR_PARAMS = new Set<KeyframableParam>(['lightColor', 'darkColor'])
@@ -69,7 +101,9 @@ function evalParam(param: KeyframableParam, list: Keyframe[], frame: number): nu
   const a = list[i]
   const b = list[i + 1]
   if (a.frame === frame || b.frame === a.frame) return a.value
-  const t = (frame - a.frame) / (b.frame - a.frame)
+  // The segment's easing belongs to its left keyframe ("out" easing).
+  const ease = EASING_FNS[a.easing ?? 'linear']
+  const t = ease((frame - a.frame) / (b.frame - a.frame))
   if (COLOR_PARAMS.has(param)) {
     return lerpHex(String(a.value), String(b.value), t)
   }
@@ -95,7 +129,8 @@ export function evaluateSettings(
 
 /* ---------- editing (immutable updates) ---------- */
 
-/** Insert or replace the keyframe for `param` at `frame`. */
+/** Insert or replace the keyframe for `param` at `frame`.
+ *  Replacing keeps the existing easing of that keyframe. */
 export function setKeyframe(
   kfs: KeyframeMap,
   param: KeyframableParam,
@@ -103,10 +138,26 @@ export function setKeyframe(
   value: number | string,
 ): KeyframeMap {
   const list = kfs[param] ?? []
+  const existing = list.find((k) => k.frame === frame)
   const next = list.filter((k) => k.frame !== frame)
-  next.push({ frame, value })
+  next.push({ frame, value, easing: existing?.easing ?? 'linear' })
   next.sort((a, b) => a.frame - b.frame)
   return { ...kfs, [param]: next }
+}
+
+/** Change the outgoing easing of the keyframe at `frame`. */
+export function setKeyframeEasing(
+  kfs: KeyframeMap,
+  param: KeyframableParam,
+  frame: number,
+  easing: EasingId,
+): KeyframeMap {
+  const list = kfs[param]
+  if (!list) return kfs
+  return {
+    ...kfs,
+    [param]: list.map((k) => (k.frame === frame ? { ...k, easing } : k)),
+  }
 }
 
 /** Remove the keyframe at `frame`; drops the param entry when empty. */

@@ -1,23 +1,16 @@
 /* ============================================================
-   ColorField — app-styled color control with three modes chosen
-   via a compact dropdown:
-     Picker  – styled swatch well wrapping the native eyedropper
-     HEX     – validated manual hex entry (#000, #ff6600, …)
-     Presets – compact grid of single-color chips
+   ColorField — unified color control:
+     [color swatch] [HEX input]   ← hex entry is the primary control
+     [preset chips]               ← compact row underneath
+   The swatch previews the value live and opens the native picker
+   on click. Hex input accepts #rgb / #rrggbb, validated before
+   applying; Escape restores, Enter/blur commits.
    ============================================================ */
 
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import type { ColorPickerMode } from '../../types'
-import { Select } from './Select'
 
-const MODE_OPTIONS: { value: ColorPickerMode; label: string }[] = [
-  { value: 'picker', label: 'Picker' },
-  { value: 'hex', label: 'HEX' },
-  { value: 'presets', label: 'Presets' },
-]
-
-/** Single-color preset chips for the Presets mode. */
+/** Single-color preset chips shown under the hex row. */
 const COLOR_PRESETS = [
   '#000000', '#ffffff', '#e8e3dc', '#4af17a', '#03170a',
   '#ffb02e', '#ff6600', '#e63946', '#1c3fae', '#f4ead8',
@@ -42,7 +35,6 @@ interface ColorFieldProps {
 }
 
 export function ColorField({ label, value, disabled, onChange, headSlot }: ColorFieldProps) {
-  const [mode, setMode] = useState<ColorPickerMode>('picker')
   const [hexDraft, setHexDraft] = useState(value)
   const [hexInvalid, setHexInvalid] = useState(false)
   const editing = useRef(false)
@@ -59,96 +51,81 @@ export function ColorField({ label, value, disabled, onChange, headSlot }: Color
     editing.current = false
     const normalized = normalizeHex(hexDraft)
     if (normalized) {
-      setHexInvalid(false)
       setHexDraft(normalized)
       if (normalized !== value) onChange(normalized)
     } else {
       // Invalid input: restore the applied color.
-      setHexInvalid(false)
       setHexDraft(value)
     }
+    setHexInvalid(false)
   }
+
+  // Live-preview the swatch while a valid hex is being typed.
+  const previewColor = normalizeHex(hexDraft) ?? value
 
   return (
     <div className={`control colorfield${disabled ? ' disabled' : ''}`}>
       <div className="control-head">
         {headSlot}
         <span className="control-label">{label}</span>
-        <span className="colorfield-mode">
-          <Select
-            value={mode}
-            options={MODE_OPTIONS}
-            onChange={(v) => setMode(v as ColorPickerMode)}
-            disabled={disabled}
-            ariaLabel={`${label} input mode`}
-            compact
-          />
-        </span>
       </div>
 
-      {mode === 'picker' && (
-        <div className="colorfield-body">
-          <span className="color-swatch color-swatch--wide" style={{ background: value }}>
-            <input
-              type="color"
-              value={normalizeHex(value) ?? '#000000'}
-              disabled={disabled}
-              onChange={(e) => onChange(e.target.value)}
-              aria-label={label}
-            />
-          </span>
-          <span className="color-hex">{value.toUpperCase()}</span>
-        </div>
-      )}
-
-      {mode === 'hex' && (
-        <div className="colorfield-body">
-          <span className="color-swatch" style={{ background: normalizeHex(hexDraft) ?? value }} aria-hidden />
+      <div className="colorfield-body">
+        <span
+          className="color-swatch"
+          style={{ background: previewColor }}
+          title="Open color picker"
+        >
           <input
-            type="text"
-            className={`colorfield-hexinput${hexInvalid ? ' invalid' : ''}`}
-            value={hexDraft}
+            type="color"
+            value={normalizeHex(value) ?? '#000000'}
             disabled={disabled}
-            spellCheck={false}
-            maxLength={7}
-            aria-label={`${label} hex value`}
-            onFocus={() => {
-              editing.current = true
-            }}
-            onChange={(e) => {
-              setHexDraft(e.target.value)
-              setHexInvalid(e.target.value.trim() !== '' && normalizeHex(e.target.value) === null)
-            }}
-            onBlur={commitHex}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') commitHex()
-              else if (e.key === 'Escape') {
-                editing.current = false
-                setHexDraft(value)
-                setHexInvalid(false)
-                ;(e.target as HTMLInputElement).blur()
-              }
-            }}
-            placeholder="#ff6600"
+            onChange={(e) => onChange(e.target.value)}
+            aria-label={`${label} color picker`}
           />
-        </div>
-      )}
+        </span>
+        <input
+          type="text"
+          className={`colorfield-hexinput${hexInvalid ? ' invalid' : ''}`}
+          value={hexDraft}
+          disabled={disabled}
+          spellCheck={false}
+          maxLength={7}
+          aria-label={`${label} hex value`}
+          onFocus={() => {
+            editing.current = true
+          }}
+          onChange={(e) => {
+            setHexDraft(e.target.value)
+            setHexInvalid(e.target.value.trim() !== '' && normalizeHex(e.target.value) === null)
+          }}
+          onBlur={commitHex}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') commitHex()
+            else if (e.key === 'Escape') {
+              editing.current = false
+              setHexDraft(value)
+              setHexInvalid(false)
+              ;(e.target as HTMLInputElement).blur()
+            }
+          }}
+          placeholder="#ff6600"
+        />
+      </div>
 
-      {mode === 'presets' && (
-        <div className="colorfield-presets">
-          {COLOR_PRESETS.map((c) => (
-            <button
-              key={c}
-              type="button"
-              className={`colorchip${normalizeHex(value) === c ? ' selected' : ''}`}
-              style={{ background: c }}
-              title={c}
-              aria-label={`${label}: ${c}`}
-              onClick={() => onChange(c)}
-            />
-          ))}
-        </div>
-      )}
+      <div className="colorfield-presets">
+        {COLOR_PRESETS.map((c) => (
+          <button
+            key={c}
+            type="button"
+            className={`colorchip${normalizeHex(value) === c ? ' selected' : ''}`}
+            style={{ background: c }}
+            title={c}
+            aria-label={`${label}: ${c}`}
+            onClick={() => onChange(c)}
+          />
+        ))}
+      </div>
     </div>
   )
 }

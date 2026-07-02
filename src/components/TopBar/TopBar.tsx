@@ -51,8 +51,8 @@ export function TopBar({
   return (
     <header className="topbar">
       <div className="topbar-brand">
-        <img src={logoUrl} alt="" className="topbar-logo" />
-        SONITUS <span className="sub">DITHER STUDIO</span>
+        <img src={logoUrl} alt="Sonitus" className="topbar-logo" />
+        SONITUS
       </div>
 
       <div className="topbar-group" role="toolbar" aria-label="File">
