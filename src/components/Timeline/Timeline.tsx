@@ -165,6 +165,17 @@ export function Timeline({
       e.stopPropagation()
       const el = scrollRef.current
       if (!el) return
+      // Capture on the scroll container, NOT the marker button: moving a
+      // keyframe changes its React key, so the marker node is replaced
+      // mid-drag and would lose both the capture and the listeners. The
+      // scroll container is stable for the whole drag, and capture still
+      // guarantees pointerup even when the mouse leaves the (Electron)
+      // window.
+      try {
+        el.setPointerCapture(e.pointerId)
+      } catch {
+        /* pointer already gone — the marker's own click still selects */
+      }
       const state = { frame: startFrame, moved: false }
       const move = (ev: PointerEvent) => {
         const rect = el.getBoundingClientRect()
@@ -179,16 +190,19 @@ export function Timeline({
         state.frame = target
         state.moved = true
       }
-      const up = () => {
-        window.removeEventListener('pointermove', move)
-        window.removeEventListener('pointerup', up)
-        if (state.moved) {
-          suppressKfClick.current = true
-          onSelectKf({ param, frame: state.frame })
-        }
+      const finish = () => {
+        el.removeEventListener('pointermove', move)
+        el.removeEventListener('pointerup', finish)
+        el.removeEventListener('pointercancel', finish)
+        // With the capture on the container the click lands there, not on
+        // the marker — select here so plain clicks keep working, and
+        // suppress a marker click that may still fire without capture.
+        suppressKfClick.current = state.moved
+        onSelectKf({ param, frame: state.frame })
       }
-      window.addEventListener('pointermove', move)
-      window.addEventListener('pointerup', up)
+      el.addEventListener('pointermove', move)
+      el.addEventListener('pointerup', finish)
+      el.addEventListener('pointercancel', finish)
     },
     [ppf, totalFrames, onMoveKf, onSelectKf],
   )
@@ -205,15 +219,22 @@ export function Timeline({
 
   const onResizeStart = (e: React.PointerEvent) => {
     e.preventDefault()
+    // Pointer capture guarantees pointerup even when the mouse leaves
+    // the (Electron) window — without it a missed release left the
+    // drag active and every later mouse move kept resizing.
+    const handle = e.currentTarget as HTMLElement
+    handle.setPointerCapture(e.pointerId)
     const startY = e.clientY
     const startH = bodyH
     const move = (ev: PointerEvent) => setBodyH(clampBodyH(startH + (startY - ev.clientY)))
-    const up = () => {
-      window.removeEventListener('pointermove', move)
-      window.removeEventListener('pointerup', up)
+    const finish = () => {
+      handle.removeEventListener('pointermove', move)
+      handle.removeEventListener('pointerup', finish)
+      handle.removeEventListener('pointercancel', finish)
     }
-    window.addEventListener('pointermove', move)
-    window.addEventListener('pointerup', up)
+    handle.addEventListener('pointermove', move)
+    handle.addEventListener('pointerup', finish)
+    handle.addEventListener('pointercancel', finish)
   }
 
   /* ---------- sizing / fit ---------- */
@@ -367,19 +388,37 @@ export function Timeline({
 
     const first = Math.max(0, Math.floor(scrollLeft / ppf))
     const last = Math.min(totalFrames, Math.ceil((scrollLeft + viewW) / ppf))
+    const xOf = (f: number) => Math.round(f * ppf - scrollLeft)
 
-    // Minor frame ticks when zoomed in enough to resolve them.
+    // Baseline along the bottom edge.
+    ctx.fillStyle = colTick
+    ctx.globalAlpha = 0.7
+    ctx.fillRect(0, RULER_H - 1, viewW, 1)
+    ctx.globalAlpha = 1
+
+    // Frame subdivisions: short ticks rising from the baseline.
     if (ppf >= 4) {
       ctx.fillStyle = colTick
-      ctx.globalAlpha = 0.5
+      ctx.globalAlpha = 0.55
       for (let f = first; f <= Math.min(last, totalFrames - 1); f++) {
         if (f % fps === 0) continue
-        ctx.fillRect(Math.round(f * ppf - scrollLeft), RULER_H - 7, 1, 5)
+        ctx.fillRect(xOf(f), RULER_H - 6, 1, 6)
+      }
+      ctx.globalAlpha = 1
+    } else if (ppf * fps >= 24) {
+      // Half-second subdivisions when frames are too dense.
+      ctx.fillStyle = colTick
+      ctx.globalAlpha = 0.55
+      const half = fps / 2
+      for (let f = Math.ceil(first / half) * half; f <= Math.min(last, totalFrames - 1); f += half) {
+        if (f % fps === 0) continue
+        ctx.fillRect(xOf(Math.round(f)), RULER_H - 6, 1, 6)
       }
       ctx.globalAlpha = 1
     }
 
-    // Second ticks with time labels (skip the end boundary; drawn below).
+    // Second markers: full-height vertical lines (extend to the top,
+    // like editing software) with the label sitting right of the line.
     ctx.font = '600 8.5px "JetBrains Mono", monospace'
     ctx.textBaseline = 'top'
     const secStep = pickLabelStep(ppf * fps, 56)
@@ -387,33 +426,33 @@ export function Timeline({
       if (s % secStep !== 0) continue
       const f = s * fps
       if (f >= totalFrames) break
-      const x = Math.round(f * ppf - scrollLeft)
+      const x = xOf(f)
       ctx.fillStyle = colTick
-      ctx.fillRect(x, RULER_H - 12, 1, 12)
+      ctx.fillRect(x, 0, 1, RULER_H)
       ctx.fillStyle = colTextStrong
-      ctx.fillText(`${s}s`, x + 4, 3)
+      ctx.fillText(`${s}s`, x + 5, 3)
     }
 
-    // The exact end boundary always gets a tick + right-aligned label,
+    // The exact end boundary always gets a full-height line + label,
     // so the timeline visibly ends at e.g. 5.00s — never one frame short.
     {
-      const endX = Math.round(totalFrames * ppf - scrollLeft)
+      const endX = xOf(totalFrames)
       if (endX >= -60 && endX <= viewW + 60) {
         ctx.fillStyle = colTick
-        ctx.fillRect(endX, RULER_H - 14, 1, 14)
+        ctx.fillRect(endX, 0, 1, RULER_H)
         const totalSec = totalFrames / fps
         const label = Number.isInteger(totalSec) ? `${totalSec}s` : `${totalSec.toFixed(2)}s`
         ctx.fillStyle = colTextStrong
-        ctx.fillText(label, endX - ctx.measureText(label).width - 4, 3)
+        ctx.fillText(label, endX - ctx.measureText(label).width - 5, 3)
       }
     }
 
-    // Frame-number labels when zoomed far in.
+    // Frame-number labels above the subdivisions when zoomed far in.
     if (ppf >= 26) {
       ctx.fillStyle = colText
       for (let f = first; f <= Math.min(last, totalFrames - 1); f++) {
         if (f % fps === 0) continue
-        ctx.fillText(String(f + 1), Math.round(f * ppf - scrollLeft) + 3, RULER_H - 22)
+        ctx.fillText(String(f + 1), xOf(f) + 3, RULER_H - 17)
       }
     }
 

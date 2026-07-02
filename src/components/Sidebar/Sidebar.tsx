@@ -8,6 +8,7 @@ import { Section, SelectRow, SliderRow, ToggleRow, type KfControlProps } from '.
 import { ColorField } from '../ui/ColorField'
 import { KeyframeControl } from './controls'
 import { NumberField } from '../ui/NumberField'
+import { PaletteEditor } from './PaletteEditor'
 
 interface SidebarProps {
   /** Evaluated (keyframe-aware) settings for display. */
@@ -69,6 +70,8 @@ export function Sidebar({
 
   const errorDiffusion = isErrorDiffusion(settings.algorithm)
   const mono = settings.paletteMode === 'mono'
+  const legacyImage = !mono && settings.colorMapping === 'legacy'
+  const paletteImage = !mono && settings.colorMapping === 'current'
   const exporting = exportProgress !== null
 
   // Processing never upscales beyond the source width.
@@ -185,7 +188,7 @@ export function Sidebar({
           min={2}
           max={16}
           resetValue={d.greyLevels}
-          disabled={!mono}
+          disabled={!mono && !legacyImage}
           kf={kfControl('greyLevels')}
           onChange={(v) => updateParam('greyLevels', v)}
         />
@@ -261,6 +264,15 @@ export function Sidebar({
           ]}
           onChange={(v) => update({ paletteMode: v as DitherSettings['paletteMode'] })}
         />
+        <SelectRow
+          label="Color mapping"
+          value={settings.colorMapping}
+          options={[
+            { value: 'current', label: 'Current (Palette)' },
+            { value: 'legacy', label: 'Legacy (RGB Levels)' },
+          ]}
+          onChange={(v) => update({ colorMapping: v as DitherSettings['colorMapping'] })}
+        />
 
         <ColorField
           label="Highlight"
@@ -299,16 +311,36 @@ export function Sidebar({
           </div>
         </div>
 
+        <SelectRow
+          label="Image palette"
+          value={settings.paletteStyle}
+          disabled={!paletteImage}
+          options={[
+            { value: 'dominant', label: 'Dominant colors' },
+            { value: 'average', label: 'Average colors' },
+            { value: 'vibrant', label: 'Vibrant colors' },
+            { value: 'muted', label: 'Muted colors' },
+            { value: 'contrast', label: 'High contrast' },
+            { value: 'custom', label: 'Custom palette' },
+          ]}
+          onChange={(v) => update({ paletteStyle: v as DitherSettings['paletteStyle'] })}
+        />
         <SliderRow
           label="Palette size"
           value={settings.paletteSize}
           min={2}
           max={32}
           resetValue={d.paletteSize}
-          disabled={mono}
+          disabled={!paletteImage || settings.paletteStyle === 'custom'}
           unit=" colors"
           onChange={(v) => update({ paletteSize: v })}
         />
+        {paletteImage && settings.paletteStyle === 'custom' && (
+          <PaletteEditor
+            colors={settings.customPalette}
+            onChange={(next) => update({ customPalette: next })}
+          />
+        )}
       </Section>
 
       {/* ---------- EXPORT ---------- */}

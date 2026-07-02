@@ -107,7 +107,8 @@ export class ProcessingEngine {
     return [
       s.algorithm, s.resolution, s.brightness, s.contrast, s.gamma, s.threshold,
       s.preBlur, s.invert ? 1 : 0, s.serpentine ? 1 : 0, s.greyLevels,
-      s.paletteMode, s.lightColor, s.darkColor, s.paletteSize,
+      s.paletteMode, s.colorMapping, s.lightColor, s.darkColor, s.paletteSize,
+      s.resolvedPalette?.join(',') ?? '',
     ].join('|')
   }
 

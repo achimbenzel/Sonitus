@@ -24,6 +24,22 @@ export type AlgorithmId =
 
 export type PaletteMode = 'mono' | 'image'
 
+/** How selected colors are interpreted.
+ *  'current' — palette-based mapping (mono ramp / extracted palette).
+ *  'legacy'  — reproduction of the older HTML app: Rec.601 luminance
+ *  with additive threshold in mono, and independent per-channel RGB
+ *  level quantization in image mode. */
+export type ColorMapping = 'current' | 'legacy'
+
+/** Image-palette generation style ('custom' uses customPalette). */
+export type PaletteStyle =
+  | 'dominant'
+  | 'average'
+  | 'vibrant'
+  | 'muted'
+  | 'contrast'
+  | 'custom'
+
 /** Post-dither resampling method: applied AFTER dithering and AFTER
  *  the pixel-scale upscale, as the very last step of the pipeline.
  *  It softens/rounds the enlarged dither pixels without changing the
@@ -57,12 +73,21 @@ export interface DitherSettings {
   /** Number of tonal levels for mono output, 2 .. 16. */
   greyLevels: number
   paletteMode: PaletteMode
+  /** Color interpretation mode (current palette vs legacy RGB levels). */
+  colorMapping: ColorMapping
   /** Mono palette: color used for highlights (bright pixels). */
   lightColor: string
   /** Mono palette: color used for shadows (dark pixels). */
   darkColor: string
   /** Image palette: number of colors extracted from the source, 2 .. 32. */
   paletteSize: number
+  /** Image palette: generation style. */
+  paletteStyle: PaletteStyle
+  /** User-defined palette (hex colors) for paletteStyle 'custom'. */
+  customPalette: string[]
+  /** Derived, not persisted: the resolved image palette shared by all
+   *  frames (computed once from the source — prevents flicker). */
+  resolvedPalette?: string[]
   /** Output pixel scale multiplier (export size = resolution * scale). */
   pixelScale: number
 }
@@ -85,9 +110,12 @@ export const DEFAULT_SETTINGS: DitherSettings = {
   serpentine: true,
   greyLevels: 2,
   paletteMode: 'mono',
+  colorMapping: 'current',
   lightColor: '#e8f4f8',
   darkColor: '#071318',
   paletteSize: 8,
+  paletteStyle: 'dominant',
+  customPalette: ['#071318', '#1c3fae', '#46b3cc', '#4af17a', '#ffb02e', '#e8f4f8'],
   pixelScale: 4,
 }
 
@@ -130,8 +158,11 @@ export type KeyframableParam =
 export type EasingId = 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out' | 'hold'
 
 export interface Keyframe {
-  /** Timeline frame index the keyframe sits on. */
+  /** Timeline frame index the keyframe sits on (at the current FPS). */
   frame: number
+  /** Authoritative time position in seconds. When the FPS changes,
+   *  `frame` is recomputed from this so keyframes keep their time. */
+  time: number
   /** Number for numeric params, hex string for color params. */
   value: number | string
   /** Easing of the outgoing segment (default: linear). */

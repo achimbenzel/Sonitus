@@ -5,7 +5,6 @@ import type {
   EasingId,
   ExportKind,
   KeyframableParam,
-  KeyframeMap,
   KeyframeRef,
   ProgressState,
   ProjectKind,
@@ -13,7 +12,7 @@ import type {
 } from './types'
 import { DEFAULT_SETTINGS } from './types'
 import { PRIORITY, ProcessingEngine } from './engine/ProcessingEngine'
-import { useSettingsHistory } from './hooks/useSettingsHistory'
+import { useProjectHistory } from './hooks/useSettingsHistory'
 import {
   evaluateSettings,
   hasKeyframeAt,
@@ -21,10 +20,12 @@ import {
   moveKeyframe,
   nextKeyframe,
   prevKeyframe,
+  remapKeyframesToFps,
   removeKeyframe,
   setKeyframe,
   setKeyframeEasing,
 } from './keyframes/keyframes'
+import { generatePalette, rgbToHex } from './dither/palette'
 import { buildImageFrames, extractVideoFrames } from './utils/imageLoad'
 import { exportCmykPlates, exportStill, exportSvg, type SequenceExportHandle } from './utils/export'
 import { exportGif, exportMp4, exportPngSequence } from './utils/videoExport'
@@ -56,8 +57,18 @@ export default function App() {
   if (!engineRef.current) engineRef.current = new ProcessingEngine()
   const engine = engineRef.current
 
-  const { settings, update, replaceAll, undo, redo, canUndo, canRedo } =
-    useSettingsHistory(DEFAULT_SETTINGS)
+  const {
+    settings,
+    keyframes,
+    update,
+    updateKeyframes,
+    replaceAll,
+    transformKeyframes,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+  } = useProjectHistory(DEFAULT_SETTINGS)
 
   const [frames, setFrames] = useState<SourceFrame[]>([])
   const [projectKind, setProjectKind] = useState<ProjectKind>('none')
@@ -69,8 +80,9 @@ export default function App() {
   const [buffering, setBuffering] = useState(false)
   const [compare, setCompare] = useState<CompareMode>('dithered')
   const [holdOriginal, setHoldOriginal] = useState(false)
-  const [keyframes, setKeyframes] = useState<KeyframeMap>({})
   const [selectedKf, setSelectedKf] = useState<KeyframeRef | null>(null)
+  /** Cached image palette shared by all frames (prevents flicker). */
+  const [imagePalette, setImagePalette] = useState<string[] | null>(null)
   const [processed, setProcessed] = useState<ImageBitmap | null>(null)
   /** What the viewport draws: the crisp processed bitmap, or the
    *  post-softened composite at output resolution. */
@@ -118,16 +130,22 @@ export default function App() {
     Partial<Record<KeyframableParam, number | string>>
   >({})
 
+  /** The palette is only injected when it actually drives processing. */
+  const usesImagePalette = settings.paletteMode === 'image' && settings.colorMapping === 'current'
+  const imagePaletteRef = useRef<string[] | null>(null)
+  imagePaletteRef.current = usesImagePalette ? imagePalette : null
+
   const effSettings = useMemo(() => {
     const evaluated = evaluateSettings(settings, keyframes, current)
     const keys = Object.keys(paramOverrides) as KeyframableParam[]
-    if (keys.length === 0) return evaluated
-    const out = { ...evaluated }
+    const out = keys.length === 0 && !imagePaletteRef.current ? evaluated : { ...evaluated }
     for (const k of keys) {
       ;(out as Record<KeyframableParam, number | string>)[k] = paramOverrides[k]!
     }
+    if (imagePaletteRef.current) out.resolvedPalette = imagePaletteRef.current
     return out
-  }, [settings, keyframes, current, paramOverrides])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings, keyframes, current, paramOverrides, imagePalette, usesImagePalette])
   const hash = useMemo(() => engine.settingsHash(effSettings), [engine, effSettings])
   /** Cancellation generation: changes when base settings or keyframes
    *  change, but NOT when the playhead moves (buffered frames of a
@@ -154,11 +172,56 @@ export default function App() {
     setCurrent(pos)
   }, [])
 
-  const settingsAt = useCallback(
-    (i: number): DitherSettings =>
-      evaluateSettings(stateRef.current.settings, stateRef.current.keyframes, i),
-    [],
-  )
+  const settingsAt = useCallback((i: number): DitherSettings => {
+    const s = evaluateSettings(stateRef.current.settings, stateRef.current.keyframes, i)
+    return imagePaletteRef.current ? { ...s, resolvedPalette: imagePaletteRef.current } : s
+  }, [])
+
+  /* ---------- image palette generation (cached, no flicker) ---------- */
+
+  const refFrame = frames[0] ?? null
+  useEffect(() => {
+    if (!usesImagePalette) {
+      setImagePalette(null)
+      return
+    }
+    if (settings.paletteStyle === 'custom') {
+      setImagePalette(settings.customPalette.length >= 2 ? settings.customPalette : null)
+      return
+    }
+    if (!refFrame) {
+      setImagePalette(null)
+      return
+    }
+    let stale = false
+    ;(async () => {
+      // Sample the first frame small — plenty for palette extraction.
+      const bmp = await engine.decodeSource(refFrame)
+      const pw = Math.min(160, bmp.width)
+      const ph = Math.max(1, Math.round((pw * bmp.height) / bmp.width))
+      const c = new OffscreenCanvas(pw, ph)
+      const ctx = c.getContext('2d', { willReadFrequently: true })!
+      ctx.drawImage(bmp, 0, 0, pw, ph)
+      const data = ctx.getImageData(0, 0, pw, ph).data
+      const count = Math.min(32, Math.max(2, Math.round(settings.paletteSize)))
+      const style = settings.paletteStyle as Exclude<DitherSettings['paletteStyle'], 'custom'>
+      const palette = generatePalette(data, count, style).map(rgbToHex)
+      if (!stale) setImagePalette(palette)
+    })().catch(() => {
+      if (!stale) setImagePalette(null)
+    })
+    return () => {
+      stale = true
+    }
+  }, [
+    engine,
+    refFrame,
+    usesImagePalette,
+    settings.paletteStyle,
+    settings.paletteSize,
+    // join → stable identity while editing other settings
+    settings.customPalette.join(','),
+  ])
 
   /* ---------- UI style ---------- */
 
@@ -191,28 +254,32 @@ export default function App() {
    *  - no keyframe here      → create one with the current live value
    *  - keyframe + changed    → save the changed value into it
    *  - keyframe + unchanged  → remove it */
-  const toggleKf = useCallback((param: KeyframableParam) => {
-    const { keyframes: kfs, current: cur, settings: base, paramOverrides: ov } = stateRef.current
-    const override = ov[param]
-    if (hasKeyframeAt(kfs, param, cur)) {
-      const stored = kfs[param]!.find((k) => k.frame === cur)!.value
-      if (override !== undefined && override !== stored) {
-        setKeyframes(setKeyframe(kfs, param, cur, override))
+  const toggleKf = useCallback(
+    (param: KeyframableParam) => {
+      const { keyframes: kfs, current: cur, settings: base, paramOverrides: ov, fps: curFps } =
+        stateRef.current
+      const override = ov[param]
+      if (hasKeyframeAt(kfs, param, cur)) {
+        const stored = kfs[param]!.find((k) => k.frame === cur)!.value
+        if (override !== undefined && override !== stored) {
+          updateKeyframes(setKeyframe(kfs, param, cur, override, curFps))
+        } else {
+          updateKeyframes(removeKeyframe(kfs, param, cur))
+        }
       } else {
-        setKeyframes(removeKeyframe(kfs, param, cur))
+        const value = override !== undefined ? override : evaluateSettings(base, kfs, cur)[param]
+        updateKeyframes(setKeyframe(kfs, param, cur, value, curFps))
       }
-    } else {
-      const value = override !== undefined ? override : evaluateSettings(base, kfs, cur)[param]
-      setKeyframes(setKeyframe(kfs, param, cur, value))
-    }
-    // The live value is now stored (or discarded with the keyframe).
-    setParamOverrides((o) => {
-      if (!(param in o)) return o
-      const next = { ...o }
-      delete next[param]
-      return next
-    })
-  }, [])
+      // The live value is now stored (or discarded with the keyframe).
+      setParamOverrides((o) => {
+        if (!(param in o)) return o
+        const next = { ...o }
+        delete next[param]
+        return next
+      })
+    },
+    [updateKeyframes],
+  )
 
   const kfControl = useCallback(
     (param: KeyframableParam): KfControlProps => {
@@ -282,22 +349,48 @@ export default function App() {
     }
   }, [keyframes, selectedKf])
 
-  const setEasing = useCallback((ref: KeyframeRef, easing: EasingId) => {
-    setKeyframes((kfs) => setKeyframeEasing(kfs, ref.param, ref.frame, easing))
-  }, [])
+  const setEasing = useCallback(
+    (ref: KeyframeRef, easing: EasingId) => {
+      updateKeyframes(setKeyframeEasing(stateRef.current.keyframes, ref.param, ref.frame, easing))
+    },
+    [updateKeyframes],
+  )
 
-  const deleteKeyframe = useCallback((ref: KeyframeRef) => {
-    setKeyframes((kfs) => removeKeyframe(kfs, ref.param, ref.frame))
-    setSelectedKf(null)
-  }, [])
+  const deleteKeyframe = useCallback(
+    (ref: KeyframeRef) => {
+      updateKeyframes(removeKeyframe(stateRef.current.keyframes, ref.param, ref.frame))
+      setSelectedKf(null)
+    },
+    [updateKeyframes],
+  )
 
-  /** Drag-move: keeps value + easing; overlaps are refused upstream. */
-  const moveKf = useCallback((param: KeyframableParam, from: number, to: number) => {
-    setKeyframes((kfs) => moveKeyframe(kfs, param, from, to))
-    setSelectedKf((sel) =>
-      sel && sel.param === param && sel.frame === from ? { param, frame: to } : sel,
-    )
-  }, [])
+  /** Drag-move: keeps value + easing; overlaps are refused upstream.
+   *  Rapid moves during one drag coalesce into a single undo step. */
+  const moveKf = useCallback(
+    (param: KeyframableParam, from: number, to: number) => {
+      updateKeyframes(moveKeyframe(stateRef.current.keyframes, param, from, to, stateRef.current.fps))
+      setSelectedKf((sel) =>
+        sel && sel.param === param && sel.frame === from ? { param, frame: to } : sel,
+      )
+    },
+    [updateKeyframes],
+  )
+
+  /** FPS changes keep keyframes at their time positions: frame indices
+   *  are recomputed everywhere (incl. undo history) without creating
+   *  an undo step, so no state combination is ever inconsistent. */
+  const changeFps = useCallback(
+    (newFps: number) => {
+      const oldFps = stateRef.current.fps
+      if (newFps === oldFps) return
+      transformKeyframes((kfs) => remapKeyframesToFps(kfs, oldFps, newFps))
+      setSelectedKf((sel) =>
+        sel ? { ...sel, frame: Math.max(0, Math.round((sel.frame / oldFps) * newFps)) } : sel,
+      )
+      setFps(newFps)
+    },
+    [transformKeyframes],
+  )
 
   /* ---------- preview processing (throttled, never blocks UI) ---------- */
 
@@ -486,14 +579,14 @@ export default function App() {
           setProgress({ label: 'Extracting video frames', value: v }),
         )
         loadFrames(newFrames, 'video')
-        setFps(extractFps)
+        changeFps(extractFps)
       } catch (err) {
         showToast(err instanceof Error ? err.message : 'Video import failed', true)
       } finally {
         setProgress(null)
       }
     },
-    [loadFrames, showToast],
+    [loadFrames, showToast, changeFps],
   )
 
   const onDropFiles = useCallback(
@@ -520,8 +613,7 @@ export default function App() {
       return
     }
     loadFrames([], 'none')
-    replaceAll(DEFAULT_SETTINGS)
-    setKeyframes({})
+    replaceAll({ settings: DEFAULT_SETTINGS, keyframes: {} })
     setSelectedKf(null)
     setFps(12)
     setDurationSeconds(5)
@@ -616,15 +708,15 @@ export default function App() {
     async (file: File) => {
       try {
         const parsed = parsePreset(await file.text())
-        replaceAll(parsed.settings)
-        setFps(parsed.fps)
+        replaceAll({ settings: parsed.settings, keyframes: stateRef.current.keyframes })
+        changeFps(parsed.fps)
         setLoop(parsed.loop)
         showToast(`Preset "${parsed.name}" applied`)
       } catch (err) {
         showToast(`Invalid preset: ${err instanceof Error ? err.message : 'unknown error'}`, true)
       }
     },
-    [replaceAll, showToast],
+    [replaceAll, showToast, changeFps],
   )
 
   /* ---------- keyboard shortcuts ---------- */
@@ -747,7 +839,7 @@ export default function App() {
         playing={playing}
         onTogglePlay={togglePlay}
         fps={fps}
-        setFps={setFps}
+        setFps={changeFps}
         durationSeconds={durationSeconds}
         setDurationSeconds={setDurationSeconds}
         loop={loop}

@@ -9,8 +9,9 @@
    nodeIntegration off, minimal preload).
 
    TODO before shipping:
-   - app icon: set build.icon in electron-builder.yml
-     (icon.icns / icon.ico / 512x512 png in a build/ folder)
+   - app icon: build/icon.ico + build/icon.png are PLACEHOLDERS
+     generated from the logo SVG — replace them with the final icons
+     (same filenames); add build/icon.icns for macOS
    - appId / productName: adjust in electron-builder.yml
    - macOS signing & notarization: see comments in electron-builder.yml
    ============================================================ */
@@ -27,6 +28,9 @@ function createWindow() {
     minWidth: 960,
     minHeight: 620,
     title: 'Sonitus — Dither Studio',
+    // Window icon for dev runs and Linux; Windows/macOS packaged builds
+    // take theirs from electron-builder (build/icon.ico / .icns).
+    icon: path.join(__dirname, '..', 'build', 'icon.png'),
     backgroundColor: '#071318', // matches --paper, avoids white flash
     autoHideMenuBar: true,
     webPreferences: {

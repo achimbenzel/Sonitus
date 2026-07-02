@@ -53,9 +53,15 @@
   --transition-fast:180ms ease;
   --transition-med:350ms ease;
   --maxw:1180px;
+
+  /* logo tint (themes override) */
+  --logo-color:var(--sky-blue);
 }
 
 *{margin:0;padding:0;box-sizing:border-box}
+/* Fixed 100% height chain (instead of vh) keeps the layout identical
+   in the browser and inside Electron, regardless of zoom factors. */
+html,body{height:100%}
 html{scroll-behavior:smooth}
 body{font-family:var(--font-primary);color:var(--ink);line-height:1.6;
   -webkit-font-smoothing:antialiased;overflow:hidden;position:relative;

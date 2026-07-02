@@ -2,7 +2,7 @@
    License texts for the bundled fonts live in src/assets/fonts/. */
 
 import { Modal } from '../ui/Modal'
-import logoUrl from '../../assets/sonitos-logo-placeholder.svg'
+import { AppLogo } from '../ui/AppLogo'
 import pkg from '../../../package.json'
 
 interface AboutModalProps {
@@ -23,7 +23,7 @@ export function AboutModal({ onClose }: AboutModalProps) {
   return (
     <Modal title="About" onClose={onClose} wide>
       <div className="about-head">
-        <img src={logoUrl} alt="" className="about-logo" />
+        <AppLogo size={44} className="about-logo" />
         <div>
           <h3 className="about-name">Sonitus — Dither Studio</h3>
           <p className="about-version">Version {pkg.version} (placeholder)</p>

@@ -132,29 +132,32 @@ export function evaluateSettings(
 /* ---------- editing (immutable updates) ---------- */
 
 /** Insert or replace the keyframe for `param` at `frame`.
- *  Replacing keeps the existing easing of that keyframe. */
+ *  Replacing keeps the existing easing of that keyframe. `fps` fixes
+ *  the keyframe's authoritative time position (frame / fps). */
 export function setKeyframe(
   kfs: KeyframeMap,
   param: KeyframableParam,
   frame: number,
   value: number | string,
+  fps: number,
 ): KeyframeMap {
   const list = kfs[param] ?? []
   const existing = list.find((k) => k.frame === frame)
   const next = list.filter((k) => k.frame !== frame)
-  next.push({ frame, value, easing: existing?.easing ?? 'linear' })
+  next.push({ frame, time: frame / fps, value, easing: existing?.easing ?? 'linear' })
   next.sort((a, b) => a.frame - b.frame)
   return { ...kfs, [param]: next }
 }
 
-/** Move a keyframe to a new frame, keeping value and easing.
- *  Refuses the move (returns the map unchanged) when the target frame
- *  already holds another keyframe of the same parameter. */
+/** Move a keyframe to a new frame (updating its time), keeping value
+ *  and easing. Refuses the move (returns the map unchanged) when the
+ *  target frame already holds another keyframe of the same parameter. */
 export function moveKeyframe(
   kfs: KeyframeMap,
   param: KeyframableParam,
   from: number,
   to: number,
+  fps: number,
 ): KeyframeMap {
   if (from === to) return kfs
   const list = kfs[param]
@@ -164,9 +167,37 @@ export function moveKeyframe(
   if (list.some((k) => k.frame === to)) return kfs // prevent overlap
   const next = list
     .filter((k) => k.frame !== from)
-    .concat({ ...moving, frame: to })
+    .concat({ ...moving, frame: to, time: to / fps })
     .sort((a, b) => a.frame - b.frame)
   return { ...kfs, [param]: next }
+}
+
+/** Recompute frame indices from the authoritative time positions for
+ *  a new FPS. Keyframes stay at the same second; colliding frames are
+ *  deduped (first wins). Old data without `time` derives it from the
+ *  previous FPS first, so legacy in-memory keyframes stay safe. */
+export function remapKeyframesToFps(
+  kfs: KeyframeMap,
+  oldFps: number,
+  newFps: number,
+): KeyframeMap {
+  const out: KeyframeMap = {}
+  for (const param of KEYFRAMABLE_PARAMS) {
+    const list = kfs[param]
+    if (!list || list.length === 0) continue
+    const seen = new Set<number>()
+    const next: Keyframe[] = []
+    for (const k of list) {
+      const time = k.time ?? k.frame / oldFps
+      const frame = Math.max(0, Math.round(time * newFps))
+      if (seen.has(frame)) continue
+      seen.add(frame)
+      next.push({ ...k, frame, time })
+    }
+    next.sort((a, b) => a.frame - b.frame)
+    out[param] = next
+  }
+  return out
 }
 
 /** Change the outgoing easing of the keyframe at `frame`. */

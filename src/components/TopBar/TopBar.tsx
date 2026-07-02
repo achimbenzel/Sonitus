@@ -17,7 +17,7 @@ import {
   Undo2,
 } from 'lucide-react'
 import { IconButton } from '../ui/IconButton'
-import logoUrl from '../../assets/sonitos-logo-placeholder.svg'
+import { AppLogo } from '../ui/AppLogo'
 
 interface TopBarProps {
   canUndo: boolean
@@ -51,7 +51,7 @@ export function TopBar({
   return (
     <header className="topbar">
       <div className="topbar-brand">
-        <img src={logoUrl} alt="Sonitus" className="topbar-logo" />
+        <AppLogo size={22} className="topbar-logo" />
         SONITUS
       </div>
 

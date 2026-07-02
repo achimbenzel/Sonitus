@@ -12,7 +12,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Maximize } from 'lucide-react'
 import type { CompareMode, SourceFrame } from '../../types'
-import logoUrl from '../../assets/sonitos-logo-placeholder.svg'
+import { AppLogo } from '../ui/AppLogo'
 
 interface ViewportProps {
   frame: SourceFrame | null
@@ -201,16 +201,21 @@ export function Viewport({
     e.stopPropagation()
     const el = wrapRef.current
     if (!el) return
+    // Capture so releasing outside the (Electron) window ends the drag.
+    const divider = e.currentTarget as HTMLElement
+    divider.setPointerCapture(e.pointerId)
     const move = (ev: PointerEvent) => {
       const rect = el.getBoundingClientRect()
       setSplitPos(Math.min(0.98, Math.max(0.02, (ev.clientX - rect.left) / rect.width)))
     }
-    const up = () => {
-      window.removeEventListener('pointermove', move)
-      window.removeEventListener('pointerup', up)
+    const finish = () => {
+      divider.removeEventListener('pointermove', move)
+      divider.removeEventListener('pointerup', finish)
+      divider.removeEventListener('pointercancel', finish)
     }
-    window.addEventListener('pointermove', move)
-    window.addEventListener('pointerup', up)
+    divider.addEventListener('pointermove', move)
+    divider.addEventListener('pointerup', finish)
+    divider.addEventListener('pointercancel', finish)
   }
 
   /* ---------- drag & drop import ---------- */
@@ -364,7 +369,7 @@ export function Viewport({
       {!frame && (
         <div className={`vp-empty${dragOver ? ' dragover' : ''}`}>
           <div className="vp-empty-inner">
-            <img src={logoUrl} alt="" className="vp-empty-logo" />
+            <AppLogo size={56} className="vp-empty-logo" />
             <span className="vp-empty-title">Sonitus Dither Studio</span>
             <p>
               Drop an image, image sequence or MP4 here

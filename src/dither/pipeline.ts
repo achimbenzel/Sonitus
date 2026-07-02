@@ -29,7 +29,12 @@ export function processImage(src: RawImage, s: PipelineSettings): RawImage {
   if (blurRadius > 0) boxBlurRgb(data, width, height, blurRadius)
 
   if (s.paletteMode === 'image') {
-    ditherToImagePalette(data, width, height, s)
+    if (s.colorMapping === 'legacy') {
+      // Legacy "Color (Levels)": independent per-channel quantization.
+      ditherRgbLevels(data, width, height, s)
+    } else {
+      ditherToImagePalette(data, width, height, s)
+    }
   } else {
     ditherMono(data, width, height, s)
   }
@@ -142,14 +147,21 @@ function ditherMono(data: Uint8ClampedArray, w: number, h: number, s: PipelineSe
   const levels = Math.min(16, Math.max(2, Math.round(s.greyLevels)))
   const maxLevel = levels - 1
   const step = 255 / maxLevel
-  const bias = s.threshold * 1.275 // positive threshold → darker output
+  const bias = s.threshold * 1.275
+  const legacy = s.colorMapping === 'legacy'
   const n = w * h
 
-  // Rec. 709 luminance, with the threshold bias folded in.
+  // Current: Rec.709 luminance, threshold folded in (positive → darker).
+  // Legacy (old HTML app): Rec.601 luminance; the bias is ADDED at
+  // quantization time only and the diffused error is measured against
+  // the un-biased value — faithful to the original implementation.
   const lum = new Float32Array(n)
   for (let p = 0, i = 0; p < n; p++, i += 4) {
-    lum[p] = 0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2] - bias
+    lum[p] = legacy
+      ? 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]
+      : 0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2] - bias
   }
+  const qBias = legacy ? bias : 0
 
   const levelIdx = new Uint8Array(n)
   const def = getAlgorithm(s.algorithm)
@@ -165,7 +177,7 @@ function ditherMono(data: Uint8ClampedArray, w: number, h: number, s: PipelineSe
       for (let x = xStart; x !== xEnd; x += xStep) {
         const p = y * w + x
         const old = lum[p]
-        let idx = Math.round((old / 255) * maxLevel)
+        let idx = Math.round(((old + qBias) / 255) * maxLevel)
         if (idx < 0) idx = 0
         else if (idx > maxLevel) idx = maxLevel
         levelIdx[p] = idx
@@ -185,7 +197,7 @@ function ditherMono(data: Uint8ClampedArray, w: number, h: number, s: PipelineSe
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
         const p = y * w + x
-        const v = lum[p] + (tf(x, y) - 0.5) * step
+        const v = lum[p] + qBias + (tf(x, y) - 0.5) * step
         let idx = Math.round((v / 255) * maxLevel)
         if (idx < 0) idx = 0
         else if (idx > maxLevel) idx = maxLevel
@@ -233,6 +245,67 @@ function makeNearest(palette: RGB[]) {
   }
 }
 
+/** Legacy image-color mode from the old HTML app: each RGB channel is
+ *  quantized to `greyLevels` levels independently (posterized dither).
+ *  Bias is added at quantization; error measured against the raw value. */
+function ditherRgbLevels(data: Uint8ClampedArray, w: number, h: number, s: PipelineSettings): void {
+  const levels = Math.min(16, Math.max(2, Math.round(s.greyLevels)))
+  const qStep = 255 / (levels - 1)
+  const bias = s.threshold * 1.275
+  const n = w * h
+  const def = getAlgorithm(s.algorithm)
+
+  const chans = [new Float32Array(n), new Float32Array(n), new Float32Array(n)]
+  for (let p = 0, i = 0; p < n; p++, i += 4) {
+    chans[0][p] = data[i]
+    chans[1][p] = data[i + 1]
+    chans[2][p] = data[i + 2]
+  }
+  const quant = (v: number): number => {
+    const q = Math.round(Math.min(255, Math.max(0, v)) / qStep) * qStep
+    return q < 0 ? 0 : q > 255 ? 255 : q
+  }
+
+  if (def.kind === 'error-diffusion') {
+    const { div, taps } = DIFFUSION_KERNELS[s.algorithm]
+    for (let y = 0; y < h; y++) {
+      const reverse = s.serpentine && (y & 1) === 1
+      const xStart = reverse ? w - 1 : 0
+      const xEnd = reverse ? -1 : w
+      const xStep = reverse ? -1 : 1
+      for (let x = xStart; x !== xEnd; x += xStep) {
+        const p = y * w + x
+        const i = p * 4
+        for (let c = 0; c < 3; c++) {
+          const arr = chans[c]
+          const old = arr[p]
+          const q = quant(old + bias)
+          const err = old - q
+          data[i + c] = q
+          for (const [tdx, tdy, tw] of taps) {
+            const nx = x + (reverse ? -tdx : tdx)
+            const ny = y + tdy
+            if (nx < 0 || nx >= w || ny >= h) continue
+            arr[ny * w + nx] += (err * tw) / div
+          }
+        }
+      }
+    }
+  } else {
+    const tf = makeThresholdFn(s)
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const p = y * w + x
+        const i = p * 4
+        const t = (tf(x, y) - 0.5) * qStep
+        data[i] = quant(chans[0][p] + t + bias)
+        data[i + 1] = quant(chans[1][p] + t + bias)
+        data[i + 2] = quant(chans[2][p] + t + bias)
+      }
+    }
+  }
+}
+
 function ditherToImagePalette(
   data: Uint8ClampedArray,
   w: number,
@@ -240,7 +313,13 @@ function ditherToImagePalette(
   s: PipelineSettings,
 ): void {
   const count = Math.min(32, Math.max(2, Math.round(s.paletteSize)))
-  const palette = medianCutPalette(data, count)
+  // A resolved palette (computed once from the source, shared by every
+  // frame) prevents per-frame palette flicker; fall back to per-frame
+  // extraction only while it is not available yet.
+  const palette: RGB[] =
+    s.resolvedPalette && s.resolvedPalette.length >= 2
+      ? s.resolvedPalette.map(hexToRgb)
+      : medianCutPalette(data, count)
   const nearest = makeNearest(palette)
   const bias = s.threshold * 1.275
   const n = w * h

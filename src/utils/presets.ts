@@ -35,11 +35,13 @@ export function exportPreset(
   name?: string,
 ): void {
   const presetName = name?.trim() || DEFAULT_PRESET_NAME
+  // resolvedPalette is derived from the source image — never persist it.
+  const { resolvedPalette: _derived, ...persistable } = settings
   const preset: PresetFile = {
     version: 1,
     app: 'sonitus-dither',
     name: presetName,
-    ...settings,
+    ...persistable,
     fps,
     loop,
   }
@@ -111,6 +113,26 @@ export function parsePreset(json: string): ParsedPreset {
   ) {
     throw new Error('resampling must be nearest, linear, soft or bleeding')
   }
+  // Older presets fall back to the current mapping / dominant style.
+  const colorMapping = obj.colorMapping ?? DEFAULT_SETTINGS.colorMapping
+  if (colorMapping !== 'current' && colorMapping !== 'legacy') {
+    throw new Error('colorMapping must be "current" or "legacy"')
+  }
+  const paletteStyle = obj.paletteStyle ?? DEFAULT_SETTINGS.paletteStyle
+  const PALETTE_STYLES = ['dominant', 'average', 'vibrant', 'muted', 'contrast', 'custom']
+  if (typeof paletteStyle !== 'string' || !PALETTE_STYLES.includes(paletteStyle)) {
+    throw new Error(`paletteStyle must be one of ${PALETTE_STYLES.join(', ')}`)
+  }
+  let customPalette = DEFAULT_SETTINGS.customPalette
+  if (obj.customPalette !== undefined) {
+    if (
+      !Array.isArray(obj.customPalette) ||
+      obj.customPalette.some((c) => typeof c !== 'string' || !HEX_RE.test(c))
+    ) {
+      throw new Error('customPalette must be an array of hex colors')
+    }
+    customPalette = (obj.customPalette as string[]).slice(0, 32)
+  }
 
   const d = DEFAULT_SETTINGS
   const settings: DitherSettings = {
@@ -127,6 +149,9 @@ export function parsePreset(json: string): ParsedPreset {
     serpentine: bool(obj, 'serpentine', d.serpentine),
     greyLevels: Math.round(num(obj, 'greyLevels', 2, 16, d.greyLevels)),
     paletteMode,
+    colorMapping: colorMapping as DitherSettings['colorMapping'],
+    paletteStyle: paletteStyle as DitherSettings['paletteStyle'],
+    customPalette,
     lightColor: hex(obj, 'lightColor', d.lightColor),
     darkColor: hex(obj, 'darkColor', d.darkColor),
     paletteSize: Math.round(num(obj, 'paletteSize', 2, 32, d.paletteSize)),

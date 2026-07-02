@@ -35,9 +35,12 @@ npm run electron:build:mac    # macOS (dmg + zip)
 npm run electron:build:linux  # Linux (AppImage + deb)
 ```
 
-Packaging is configured in `electron-builder.yml`; app icon, appId and
-macOS signing/notarization are marked with TODO comments there. The
-renderer runs sandboxed with context isolation and no Node access.
+Packaging is configured in `electron-builder.yml`; appId and macOS
+signing/notarization are marked with TODO comments there. The window and
+installer icons (`build/icon.ico`, `build/icon.png`) are **placeholders
+generated from the logo SVG** — drop in the final files under the same
+names (plus `build/icon.icns` for macOS). The renderer runs sandboxed with
+context isolation and no Node access.
 
 ## Architecture
 
@@ -49,7 +52,9 @@ src/
 ├── App.tsx                     orchestrator: state, playback loop, shortcuts
 ├── types/                      all shared TypeScript types + defaults
 ├── assets/
-│   ├── sonitos-logo-placeholder.svg   ← replace with the final logo
+│   ├── sonitos-logo-placeholder.svg   ← replace with the final logo (any
+│   │                           single-color SVG works: it is rendered as a
+│   │                           CSS mask and tinted per theme via --logo-color)
 │   └── fonts/                  DM Sans + JetBrains Mono + OFL licenses
 ├── themes/uiStyles.ts          UI style registry + localStorage persistence
 ├── keyframes/keyframes.ts      keyframe storage, interpolation, navigation
@@ -75,18 +80,21 @@ src/
 │   │                           scrub, Ctrl+wheel zoom, keyframe markers, thumbs
 │   ├── ProgressOverlay/        import/export progress + cancel
 │   ├── modals/                 Settings (UI styles, custom CSS) + About (licenses)
-│   └── ui/                     Select, NumberField, Modal, IconButton primitives
+│   └── ui/                     Select, NumberField, ColorField, Modal,
+│                               IconButton, AppLogo (CSS-mask logo) primitives
 ├── utils/
 │   ├── imageLoad.ts            image/sequence import, MP4 frame extraction
-│   ├── export.ts               PNG/JPEG/SVG stills, zipped PNG sequences
+│   ├── export.ts               PNG/JPEG/SVG stills, zipped PNG sequences,
+│   │                           CMYK screenprint plates
 │   ├── videoExport.ts          MP4 (WebCodecs + mp4-muxer) and GIF (gifenc)
+│   ├── postResample.ts         post-dither soften (blur + palette requantize)
 │   └── presets.ts              JSON preset export + validated import
-├── hooks/useSettingsHistory.ts undo/redo with drag coalescing
+├── hooks/useSettingsHistory.ts combined settings+keyframe undo/redo history
 └── styles/
     ├── fonts.css               local @font-face declarations
     ├── theme.css               provided design tokens (base style)
     ├── app.css                 layout + custom controls
-    └── themes.css              Light / Clean / XP style overrides
+    └── themes.css              Light / Clean / Experience / Signal Core overrides
 ```
 
 **UI styles:** Settings → UI style switches between Aqua Glass (default),
@@ -139,7 +147,21 @@ preset chip row underneath.
 
 **Palette** — mono mode with highlight/shadow color pickers + presets
 (B/W, off-white/black, green/black, orange/black, blue/cream) and multi-level
-ramps; image mode with median-cut palette extraction (2–32 colors).
+ramps; image mode with palette extraction (2–32 colors). The image palette
+has selectable **styles**: Dominant (median-cut), Average (k-means refined),
+Vibrant, Muted, High contrast, and **Custom** — a full palette editor
+(add/remove colors, HEX editing, reordering). Extracted palettes are computed
+**once** from the first frame and cached, so sequences and animations never
+flicker; the cache refreshes only when the source or the palette settings
+change.
+
+**Color mapping** — two interpretation modes affecting every output
+(viewport, stills, sequences, MP4/GIF, CMYK): **Current (Palette)** — the
+default perceptual mapping onto the mono ramp or extracted palette — and
+**Legacy (RGB Levels)**, faithful to the original Ditherstudio prototype:
+Rec.601 luminance with the tone bias applied at quantization for mono, and
+independent per-channel RGB level quantization for color. Stored in presets;
+older presets load with the current mapping.
 
 **Timeline** — always visible (default 12 FPS × 5 s when no sequence is
 loaded), laid out like creative software: resize grip at the top edge
@@ -161,6 +183,11 @@ playhead moves); the diamond button creates a keyframe (no keyframe here),
 saves the changed value (amber "dirty" state) or removes the keyframe
 (unchanged). Markers can be **dragged** along their row — snapped to whole
 frames, clamped to the timeline, easing preserved, overlaps refused.
+Keyframe timing is **FPS-independent**: the authoritative position is the
+time in seconds (the frame number is derived), so a keyframe at 2.5 s stays
+at 2.5 s when the project FPS changes — frames are re-snapped to the new
+grid (colliding keyframes deduped) and the whole undo history is remapped
+consistently.
 Consecutive keyframes are connected by a line, and the bordered "/" · "~" ·
 "□" chips below it open a per-segment easing menu (Linear, Ease In/Out/
 In-Out — cubic — and Hold/Step). Numeric values interpolate through the
@@ -187,11 +214,16 @@ off the result is bit-for-bit crisp. Applied identically in the viewport
 preview and in PNG/JPEG, sequence, MP4, GIF and CMYK exports (SVG stays
 vector-crisp). Included in presets.
 
-**Presets** — full parameter set (incl. FPS/loop) exports as JSON with a
-user-chosen name (used for the filename); import is validated field-by-field
-with clear error messages and stays compatible with older, unnamed presets.
+**Presets** — full parameter set (incl. FPS/loop, color mapping, palette
+style and custom palette) exports as JSON with a user-chosen name (used for
+the filename); import is validated field-by-field with clear error messages
+and stays compatible with older presets — missing fields fall back to safe
+defaults, and the derived image palette is never persisted.
 
-**Undo/redo** — parameter history with drag coalescing. Shortcuts: `Ctrl+Z`,
+**Undo/redo** — one combined history for parameters **and** keyframes:
+adding/removing/moving a keyframe, value saves and easing changes all undo
+with `Ctrl+Z`, and a marker drag collapses into a single undo step (drag
+coalescing). Shortcuts: `Ctrl+Z`,
 `Ctrl+Shift+Z` / `Ctrl+Y`, `Space` play/pause, `+`/`-` zoom, `0` fit,
 `1` 100%, `←`/`→` frame step, hold `C` original. Shortcuts are suppressed
 while typing in inputs.
@@ -204,21 +236,30 @@ while typing in inputs.
 - **GIF export re-quantizes each frame to ≤256 colors** — lossless for mono
   palettes, near-lossless for image-palette mode; large resolutions produce
   large files.
-- **Keyframes are not yet stored in presets or undo history** — preset JSON
-  covers the base parameters only, and Ctrl+Z does not revert keyframe edits.
+- **Keyframes are not stored in presets** — preset JSON covers the base
+  parameters, FPS and palette configuration; keyframe animation data stays
+  with the session.
 - **CMYK separation is approximate**: the standard naive RGB→CMYK formula
   with maximum black generation, no ICC profile or dot-gain compensation.
   Fine for screenprint separations of already-dithered art; not a match for
   press-calibrated prepress output.
-
+- **Legacy color mapping is a faithful re-implementation, not a pixel clone**
+  of the old prototype: it reproduces its math (Rec.601 luminance, bias at
+  quantization, per-channel RGB levels) inside the current pipeline, so
+  surrounding features (pre-blur, resampling, exports) still apply.
+- **Extracted image palettes come from the first frame** of a sequence (by
+  design, to keep colors stable across frames); if a later frame introduces
+  entirely new colors they map to the nearest existing palette entry — use a
+  larger palette size or a custom palette in that case.
+- **Changing FPS re-snaps keyframes to the new frame grid**; at lower FPS two
+  keyframes can land on the same frame, in which case the later one wins
+  (deduped deterministically).
+- **The Electron app icons are placeholders** generated from the logo SVG —
+  replace `build/icon.ico` / `build/icon.png` (and add `build/icon.icns`)
+  before shipping installers.
 - **MP4 extraction is seek-based** (fixed FPS you choose at import), not a
   demuxer — it's codec-agnostic and reliable in Chrome, but doesn't recover
   the exact original frame timing. A WebCodecs demuxer path can be added
   behind `utils/imageLoad.ts` later.
-- **Image-palette mode extracts a palette per frame**, which can flicker
-  slightly across sequences; a project-wide locked palette is a natural
-  extension.
-- **No video export** (only PNG sequences); an ffmpeg.wasm or WebCodecs encode
-  path would slot into `utils/export.ts`.
 - Very large SVG exports (high resolution + noisy algorithms) can produce
   heavy files; resolution is capped at 1024 px to keep this manageable.

@@ -4,7 +4,8 @@
    custom-styled; no raw browser defaults.
    ============================================================ */
 
-.app{display:flex;flex-direction:column;height:100vh;overflow:hidden}
+#root{height:100%}
+.app{display:flex;flex-direction:column;height:100%;overflow:hidden}
 .app-main{flex:1;display:flex;min-height:0}
 
 /* ============================================================
@@ -29,12 +30,16 @@
 .topbar-brand{display:flex;align-items:center;gap:9px;font-family:var(--font-mono);
   font-weight:700;font-size:.88rem;letter-spacing:.06em;color:var(--ink);white-space:nowrap;
   margin-right:10px}
-.topbar-logo{width:22px;height:22px;flex-shrink:0;
-  filter:drop-shadow(0 0 8px rgba(70,179,204,.5))}
+.topbar-logo{flex-shrink:0}
 .topbar-brand .sub{color:var(--ink-dim);font-weight:500;font-size:.62rem;letter-spacing:.14em}
 .topbar-group{display:flex;align-items:center;gap:4px}
 .topbar-sep{width:1px;height:20px;background:var(--line-strong);flex-shrink:0}
 .topbar-spacer{flex:1}
+
+/* themeable app logo (SVG used as a CSS mask, recolored per theme) */
+.app-logo{display:inline-block;flex-shrink:0;background-color:var(--logo-color,var(--ink));
+  -webkit-mask-repeat:no-repeat;-webkit-mask-position:center;-webkit-mask-size:contain;
+  mask-repeat:no-repeat;mask-position:center;mask-size:contain}
 
 /* icon buttons */
 .iconbtn{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;
@@ -107,7 +112,7 @@
   border-radius:var(--radius-med);backdrop-filter:blur(4px);padding:2.2rem 2.6rem;
   display:flex;flex-direction:column;align-items:center;gap:.7rem;max-width:80%;box-shadow:var(--gloss-inset);
   text-align:center}
-.vp-empty-logo{width:56px;height:56px;opacity:.9;filter:drop-shadow(0 0 14px rgba(70,179,204,.4))}
+.vp-empty-logo{opacity:.92}
 .vp-empty-title{font-family:var(--font-mono);font-size:.78rem;font-weight:700;letter-spacing:.16em;
   text-transform:uppercase;color:var(--ink)}
 .vp-empty-inner p{font-family:var(--font-mono);font-size:.68rem;color:var(--ink-dim);
@@ -249,7 +254,7 @@ input[type="number"]{-moz-appearance:textfield;appearance:textfield}
 /* ============================================================
    TOGGLE SWITCH
    ============================================================ */
-.toggle{display:flex;flex-direction:row;align-items:center;justify-content:space-between;gap:10px;
+.toggle{position:relative;display:flex;flex-direction:row;align-items:center;justify-content:space-between;gap:10px;
   cursor:pointer;padding:.15rem 0;user-select:none}
 .toggle input{position:absolute;opacity:0;pointer-events:none}
 .toggle .track{width:38px;height:20px;border-radius:999px;flex-shrink:0;position:relative;
@@ -305,6 +310,20 @@ input[type="number"]{-moz-appearance:textfield;appearance:textfield}
   transition:transform var(--transition-fast),border-color var(--transition-fast)}
 .colorchip:hover{transform:translateY(-2px);border-color:var(--accent)}
 .colorchip.selected{outline:2px solid var(--sky-blue);outline-offset:1px}
+
+/* custom palette editor */
+.paledit{display:flex;flex-direction:column;gap:6px}
+.paledit-row{display:flex;align-items:center;gap:6px}
+.paledit-swatch{width:26px;height:22px;flex-shrink:0}
+.paledit-hexbtn{flex:1;text-align:left;font-family:var(--font-mono);font-size:.6rem;font-weight:700;
+  letter-spacing:.06em;color:var(--ink-soft);background:none;border:1px solid transparent;
+  border-radius:5px;padding:3px 6px;
+  transition:border-color var(--transition-fast),color var(--transition-fast)}
+.paledit-hexbtn:hover{border-color:var(--line-strong);color:var(--sky-blue)}
+.paledit-hex{flex:1;padding:.25rem .5rem;font-size:.6rem}
+.paledit-actions{display:inline-flex;gap:1px}
+.paledit-actions .iconbtn{width:20px;height:20px}
+.paledit-add{justify-content:center;margin-top:2px}
 
 /* mono palette preset swatches — compact horizontal grid */
 .swatch-row{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
@@ -586,7 +605,7 @@ input[type="number"]{-moz-appearance:textfield;appearance:textfield}
 
 /* about */
 .about-head{display:flex;align-items:center;gap:14px;margin-bottom:12px}
-.about-logo{width:44px;height:44px;filter:drop-shadow(0 0 10px rgba(70,179,204,.4))}
+.about-logo{flex-shrink:0}
 .about-name{font-family:var(--font-primary);font-size:1.05rem;font-weight:700;
   text-transform:uppercase;letter-spacing:-.01em;color:var(--ink)}
 .about-version{font-family:var(--font-mono);font-size:.6rem;letter-spacing:.1em;
