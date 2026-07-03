@@ -39,6 +39,7 @@ import { ProgressOverlay } from './components/ProgressOverlay/ProgressOverlay'
 import { SettingsModal } from './components/modals/SettingsModal'
 import { AboutModal } from './components/modals/AboutModal'
 import { PresetNameModal } from './components/modals/PresetNameModal'
+import { ConfirmModal } from './components/modals/ConfirmModal'
 import type { KfControlProps } from './components/Sidebar/controls'
 
 interface Toast {
@@ -92,6 +93,8 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [aboutOpen, setAboutOpen] = useState(false)
   const [presetNameOpen, setPresetNameOpen] = useState(false)
+  /** Pending destructive action awaiting the styled confirm dialog. */
+  const [confirmAction, setConfirmAction] = useState<'new-file' | 'new-project' | 'close' | null>(null)
   const openInputRef = useRef<HTMLInputElement>(null)
 
   /* ---------- timeline geometry ---------- */
@@ -537,14 +540,19 @@ export default function App() {
   )
 
   const importVideo = useCallback(
-    async (file: File, extractFps: number) => {
+    async (file: File) => {
       setProgress({ label: 'Extracting video frames', value: 0 })
       try {
-        const newFrames = await extractVideoFrames(file, extractFps, (v) =>
+        // The extractor measures the video's own frame rate and samples
+        // at exactly that rate — the timeline then matches the source.
+        const result = await extractVideoFrames(file, (v) =>
           setProgress({ label: 'Extracting video frames', value: v }),
         )
-        loadFrames(newFrames, 'video')
-        changeFps(extractFps)
+        loadFrames(result.frames, 'video')
+        changeFps(result.fps)
+        if (!result.fpsDetected) {
+          showToast(`Could not detect the video frame rate — using ${result.fps} fps`, true)
+        }
       } catch (err) {
         showToast(err instanceof Error ? err.message : 'Video import failed', true)
       } finally {
@@ -557,26 +565,24 @@ export default function App() {
   const onDropFiles = useCallback(
     (files: File[]) => {
       const video = files.find((f) => f.type.startsWith('video/') || /\.(mp4|webm|mov)$/i.test(f.name))
-      if (video) importVideo(video, 12)
+      if (video) importVideo(video)
       else importImages(files)
     },
     [importImages, importVideo],
   )
 
   /* New File: clear the canvas/source, keep settings + keyframes. */
-  const newFile = useCallback(() => {
-    if (frames.length > 0 && !window.confirm('Clear the current source?')) return
+  const doNewFile = useCallback(() => {
     loadFrames([], 'none')
-  }, [frames.length, loadFrames])
+  }, [loadFrames])
+
+  const newFile = useCallback(() => {
+    if (frames.length > 0) setConfirmAction('new-file')
+    else doNewFile()
+  }, [frames.length, doNewFile])
 
   /* New Project: clear source AND reset every parameter + keyframes. */
-  const newProject = useCallback(() => {
-    if (
-      (frames.length > 0 || canUndo || hasAnyKeyframe) &&
-      !window.confirm('Start a new project? This clears the source and resets all settings.')
-    ) {
-      return
-    }
+  const doNewProject = useCallback(() => {
     loadFrames([], 'none')
     replaceAll({ settings: DEFAULT_SETTINGS, keyframes: {} })
     setSelectedKf(null)
@@ -584,7 +590,33 @@ export default function App() {
     setDurationSeconds(5)
     setLoop(true)
     setCompare('dithered')
-  }, [frames.length, canUndo, hasAnyKeyframe, loadFrames, replaceAll])
+  }, [loadFrames, replaceAll])
+
+  const newProject = useCallback(() => {
+    if (frames.length > 0 || canUndo || hasAnyKeyframe) setConfirmAction('new-project')
+    else doNewProject()
+  }, [frames.length, canUndo, hasAnyKeyframe, doNewProject])
+
+  /* ---------- window-close guard ----------
+     With work loaded, closing must not be silent. In Electron the
+     close is cancelled via beforeunload and the styled dialog below
+     takes over ("save before closing"); in the plain browser the
+     standard leave-page prompt appears (browsers do not allow custom
+     UI at that point). */
+  const workRef = useRef(false)
+  workRef.current = frames.length > 0 || canUndo || hasAnyKeyframe
+  const allowClose = useRef(false)
+  useEffect(() => {
+    const isElectron = /electron/i.test(navigator.userAgent)
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (allowClose.current || !workRef.current) return
+      e.preventDefault()
+      e.returnValue = ''
+      if (isElectron) setConfirmAction('close')
+    }
+    window.addEventListener('beforeunload', onBeforeUnload)
+    return () => window.removeEventListener('beforeunload', onBeforeUnload)
+  }, [])
 
   /* ---------- export ---------- */
 
@@ -835,6 +867,52 @@ export default function App() {
       {aboutOpen && <AboutModal onClose={() => setAboutOpen(false)} />}
       {presetNameOpen && (
         <PresetNameModal onSave={savePreset} onClose={() => setPresetNameOpen(false)} />
+      )}
+      {confirmAction === 'new-file' && (
+        <ConfirmModal
+          title="New File"
+          message={
+            <>
+              This clears the current source. If you want to keep your work,
+              save a preset or export the result before continuing.
+            </>
+          }
+          confirmLabel="Clear source"
+          onConfirm={doNewFile}
+          onClose={() => setConfirmAction(null)}
+        />
+      )}
+      {confirmAction === 'new-project' && (
+        <ConfirmModal
+          title="New Project"
+          message={
+            <>
+              This clears the source and resets every setting and keyframe.
+              If you want to keep your work, save a preset or export the
+              result before continuing.
+            </>
+          }
+          confirmLabel="Reset project"
+          onConfirm={doNewProject}
+          onClose={() => setConfirmAction(null)}
+        />
+      )}
+      {confirmAction === 'close' && (
+        <ConfirmModal
+          title="Close Window"
+          message={
+            <>
+              You have unsaved work. Save a preset or export the result
+              before closing — closing the window discards everything.
+            </>
+          }
+          confirmLabel="Close anyway"
+          onConfirm={() => {
+            allowClose.current = true
+            window.close()
+          }}
+          onClose={() => setConfirmAction(null)}
+        />
       )}
     </div>
   )

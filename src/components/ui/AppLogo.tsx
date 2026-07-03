@@ -15,7 +15,11 @@ interface AppLogoProps {
 }
 
 export function AppLogo({ size = 22, className = '' }: AppLogoProps) {
-  const mask = `url(${logoUrl})`
+  // The url MUST be quoted: in production Vite inlines the SVG as a
+  // URL-encoded data: URL that contains single quotes, which break an
+  // unquoted css url() — the mask silently fails and the logo renders
+  // as a plain square.
+  const mask = `url("${logoUrl}")`
   return (
     <span
       aria-hidden

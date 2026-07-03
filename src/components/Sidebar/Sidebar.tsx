@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useRef } from 'react'
 import { Clapperboard, Download, FileArchive, Film, ImagePlus, Images, Layers, X } from 'lucide-react'
 import type { DitherSettings, ExportKind, KeyframableParam, ProjectKind } from '../../types'
 import { DEFAULT_SETTINGS } from '../../types'
@@ -7,7 +7,6 @@ import { MONO_PRESETS } from '../../dither/palette'
 import { Section, SelectRow, SliderRow, ToggleRow, type KfControlProps } from './controls'
 import { ColorField } from '../ui/ColorField'
 import { KeyframeControl } from './controls'
-import { NumberField } from '../ui/NumberField'
 import { PaletteEditor } from './PaletteEditor'
 
 interface SidebarProps {
@@ -20,7 +19,8 @@ interface SidebarProps {
   /** Keyframe UI state + actions per parameter. */
   kfControl: (param: KeyframableParam) => KfControlProps
   onImportImages: (files: File[]) => void
-  onImportVideo: (file: File, extractFps: number) => void
+  /** Import an MP4 — the frame rate is auto-detected from the video. */
+  onImportVideo: (file: File) => void
   onExport: (kind: ExportKind) => void
   projectKind: ProjectKind
   frameCount: number
@@ -66,7 +66,6 @@ export function Sidebar({
   const imageInput = useRef<HTMLInputElement>(null)
   const sequenceInput = useRef<HTMLInputElement>(null)
   const videoInput = useRef<HTMLInputElement>(null)
-  const [extractFps, setExtractFps] = useState(12)
 
   const errorDiffusion = isErrorDiffusion(settings.algorithm)
   const mono = settings.paletteMode === 'mono'
@@ -95,16 +94,6 @@ export function Sidebar({
           <button className="btn btn--sm" onClick={() => videoInput.current?.click()}>
             <Film size={14} /> MP4 Video
           </button>
-        </div>
-        <div className="inline-field">
-          <span className="control-label">MP4 extract FPS</span>
-          <NumberField
-            value={extractFps}
-            min={1}
-            max={60}
-            onChange={setExtractFps}
-            ariaLabel="MP4 extract FPS"
-          />
         </div>
         <div className="import-meta">
           Source: <b>{KIND_LABEL[projectKind]}</b>
@@ -152,7 +141,7 @@ export function Sidebar({
           style={{ display: 'none' }}
           onChange={(e) => {
             const f = e.target.files?.[0]
-            if (f) onImportVideo(f, extractFps)
+            if (f) onImportVideo(f)
             e.target.value = ''
           }}
         />

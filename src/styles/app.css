@@ -619,6 +619,7 @@ button.color-swatch{padding:0}
   margin-bottom:6px}
 .modal-note code{color:var(--sky-blue);font-size:.64rem}
 .modal-actions{display:flex;justify-content:flex-end;margin-top:10px}
+.modal-actions--confirm{gap:8px}
 
 /* settings: UI style cards */
 .style-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}

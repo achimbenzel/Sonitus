@@ -132,8 +132,11 @@ checkerboard under transparency, compare modes (dithered / original /
 draggable split with labels), hold **C** for original, drag & drop import.
 
 **Import** — single image (PNG/JPG/JPEG), multi-file image sequences (natural
-filename sort), MP4 via in-browser seek-extraction at a chosen FPS (capped at
-600 frames, stored as compressed blobs), progress overlay for large imports.
+filename sort), MP4 via in-browser seek-extraction **at the video's own frame
+rate**: the exact rate is read from the MP4 container (`moov`/`stts` timing,
+23.976 → 24 etc.), with a playback measurement fallback for other formats,
+and the timeline FPS is set to match (capped at 600 frames, stored as
+compressed blobs). Progress overlay for large imports.
 
 **Dithering** — error diffusion (Floyd–Steinberg, JJN, Stucki, Atkinson,
 Burkes, Sierra, Two-Row Sierra, Sierra Lite) with serpentine toggle; ordered
@@ -226,6 +229,11 @@ clear error messages and stays compatible with older presets — missing
 fields fall back to safe defaults, removed fields (e.g. the old resampling
 options) are ignored, and the derived image palette is never persisted.
 
+**Destructive-action guard** — New File, New Project and closing the window
+with unsaved work all go through an app-styled confirmation dialog (no
+native `confirm()` popups) that reminds you to save a preset or export
+first; the Electron window close is intercepted the same way.
+
 **Undo/redo** — one combined history for parameters **and** keyframes:
 adding/removing/moving a keyframe, value saves and easing changes all undo
 with `Ctrl+Z`, and a marker drag collapses into a single undo step (drag
@@ -269,9 +277,13 @@ while typing in inputs.
   written. JPEG/SVG/MP4/GIF exports carry no metadata.
 - **The screen eyedropper needs the EyeDropper API** (Chrome and Electron
   have it); in browsers without it the button simply isn't shown.
-- **MP4 extraction is seek-based** (fixed FPS you choose at import), not a
-  demuxer — it's codec-agnostic and reliable in Chrome, but doesn't recover
-  the exact original frame timing. A WebCodecs demuxer path can be added
-  behind `utils/imageLoad.ts` later.
+- **MP4 extraction is seek-based**, not a demuxer — frames are sampled on a
+  fixed grid at the video's detected rate, so variable-frame-rate footage is
+  regularized. For non-MP4 drops (WebM/MOV without parseable timing) the
+  rate is measured from a short muted playback, which is approximate; if
+  detection fails entirely the import falls back to 12 fps with a notice.
+- **Closing with unsaved work**: in Electron the styled "save before
+  closing" dialog appears; in the plain browser the standard leave-page
+  prompt is shown instead — browsers do not allow custom UI at that point.
 - Very large SVG exports (high resolution + noisy algorithms) can produce
   heavy files; resolution is capped at 1024 px to keep this manageable.
