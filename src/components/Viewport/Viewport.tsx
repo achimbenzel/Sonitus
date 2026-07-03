@@ -18,9 +18,6 @@ interface ViewportProps {
   frame: SourceFrame | null
   processed: ImageBitmap | null
   original: ImageBitmap | null
-  /** True when `processed` is a pre-composited output-resolution bitmap
-   *  (post-dither soften): draw it smoothly instead of nearest. */
-  processedSmooth: boolean
   compare: CompareMode
   setCompare: (m: CompareMode) => void
   holdOriginal: boolean
@@ -53,7 +50,6 @@ export function Viewport({
   frame,
   processed,
   original,
-  processedSmooth,
   compare,
   setCompare,
   holdOriginal,
@@ -267,10 +263,8 @@ export function Viewport({
     const drawDithered = () => {
       if (!processed) return
       ctx.save()
-      // Crisp dither bitmaps are low-res by design → nearest neighbor.
-      // Softened composites are already at output resolution → smooth.
-      ctx.imageSmoothingEnabled = processedSmooth
-      if (processedSmooth) ctx.imageSmoothingQuality = 'high'
+      // Dither bitmaps are low-res by design → nearest neighbor.
+      ctx.imageSmoothingEnabled = false
       ctx.drawImage(processed, panX, panY, dw, dh)
       ctx.restore()
     }
@@ -295,7 +289,7 @@ export function Viewport({
     } else {
       drawDithered()
     }
-  }, [frame, processed, original, processedSmooth, view, size, compare, splitPos, holdOriginal])
+  }, [frame, processed, original, view, size, compare, splitPos, holdOriginal])
 
   const zoomPct = Math.round(view.zoom * 100)
 

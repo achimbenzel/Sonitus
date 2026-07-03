@@ -2,13 +2,14 @@
    ColorField — unified color control:
      [color swatch] [HEX input]   ← hex entry is the primary control
      [preset chips]               ← compact row underneath
-   The swatch previews the value live and opens the native picker
-   on click. Hex input accepts #rgb / #rrggbb, validated before
-   applying; Escape restores, Enter/blur commits.
+   The swatch previews the value live and opens the app-styled
+   picker popover on click. Hex input accepts #rgb / #rrggbb,
+   validated before applying; Escape restores, Enter/blur commits.
    ============================================================ */
 
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
+import { ColorSwatchPicker } from './ColorPicker'
 
 /** Single-color preset chips shown under the hex row. */
 const COLOR_PRESETS = [
@@ -71,19 +72,12 @@ export function ColorField({ label, value, disabled, onChange, headSlot }: Color
       </div>
 
       <div className="colorfield-body">
-        <span
-          className="color-swatch"
-          style={{ background: previewColor }}
-          title="Open color picker"
-        >
-          <input
-            type="color"
-            value={normalizeHex(value) ?? '#000000'}
-            disabled={disabled}
-            onChange={(e) => onChange(e.target.value)}
-            aria-label={`${label} color picker`}
-          />
-        </span>
+        <ColorSwatchPicker
+          value={normalizeHex(previewColor) ?? '#000000'}
+          disabled={disabled}
+          onChange={onChange}
+          ariaLabel={`${label} color picker`}
+        />
         <input
           type="text"
           className={`colorfield-hexinput${hexInvalid ? ' invalid' : ''}`}

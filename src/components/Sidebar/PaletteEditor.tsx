@@ -1,9 +1,11 @@
 /* Compact editor for the custom image palette: per color a picker
-   swatch, validated hex field, reorder arrows and remove; plus add. */
+   swatch, validated hex field, up/down reorder arrows and remove;
+   plus add. */
 
 import { useState } from 'react'
-import { ChevronLeft, ChevronRight, Plus, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, Plus, X } from 'lucide-react'
 import { normalizeHex } from '../ui/ColorField'
+import { ColorSwatchPicker } from '../ui/ColorPicker'
 
 const MAX_COLORS = 32
 const MIN_COLORS = 2
@@ -37,16 +39,16 @@ export function PaletteEditor({ colors, onChange }: PaletteEditorProps) {
 
   return (
     <div className="paledit">
+      {/* Key by index only: the row (and the open picker inside it) must
+          survive its own color changing while the picker is dragged. */}
       {colors.map((c, i) => (
-        <div className="paledit-row" key={`${i}-${c}`}>
-          <span className="color-swatch paledit-swatch" style={{ background: c }}>
-            <input
-              type="color"
-              value={normalizeHex(c) ?? '#000000'}
-              onChange={(e) => setColor(i, e.target.value)}
-              aria-label={`Palette color ${i + 1}`}
-            />
-          </span>
+        <div className="paledit-row" key={i}>
+          <ColorSwatchPicker
+            value={normalizeHex(c) ?? '#000000'}
+            onChange={(hex) => setColor(i, hex)}
+            ariaLabel={`Palette color ${i + 1}`}
+            swatchClass="paledit-swatch"
+          />
           {draftIdx === i ? (
             <input
               type="text"
@@ -80,19 +82,19 @@ export function PaletteEditor({ colors, onChange }: PaletteEditorProps) {
               className="iconbtn"
               disabled={i === 0}
               onClick={() => move(i, -1)}
-              aria-label="Move color left"
-              title="Move earlier"
+              aria-label="Move color up"
+              title="Move up"
             >
-              <ChevronLeft size={11} />
+              <ArrowUp size={11} />
             </button>
             <button
               className="iconbtn"
               disabled={i === colors.length - 1}
               onClick={() => move(i, 1)}
-              aria-label="Move color right"
-              title="Move later"
+              aria-label="Move color down"
+              title="Move down"
             >
-              <ChevronRight size={11} />
+              <ArrowDown size={11} />
             </button>
             <button
               className="iconbtn"

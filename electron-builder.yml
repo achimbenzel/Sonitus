@@ -1,11 +1,12 @@
 # ============================================================
 # electron-builder configuration — Windows / macOS / Linux.
 #
+# Icons: build/icon.ico is the provided Sonitus .ico (Windows);
+# build/icon.png (Linux, 512x512) and build/icon.icns (macOS, PNG-based)
+# are rendered from the Sonitus logo SVG.
+#
 # TODO before a real release:
 #   - appId: change to your own reverse-DNS id
-#   - icon:  add build/icon.icns (mac), build/icon.ico (win) and
-#            build/icon.png (linux, 512x512), then uncomment the
-#            icon lines below
 #   - macOS code signing / notarization: set the CSC_LINK /
 #     CSC_KEY_PASSWORD env vars and add
 #       notarize: true
@@ -36,14 +37,11 @@ mac:
   target:
     - dmg
     - zip
-  # icon: build/icon.icns   # TODO: add a real .icns (current icons are
-  #                           placeholders generated from the logo SVG)
+  icon: build/icon.icns
 
 win:
   target:
     - nsis
-  # Placeholder icon generated from the logo SVG — replace build/icon.ico
-  # with the final .ico (keep the filename).
   icon: build/icon.ico
 
 nsis:
@@ -55,6 +53,4 @@ linux:
   target:
     - AppImage
     - deb
-  # Placeholder icon generated from the logo SVG — replace build/icon.png
-  # with the final 512x512 png (keep the filename).
   icon: build/icon.png

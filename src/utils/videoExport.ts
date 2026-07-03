@@ -11,9 +11,9 @@
 import { ArrayBufferTarget, Muxer } from 'mp4-muxer'
 import { GIFEncoder, applyPalette, quantize } from 'gifenc'
 import { zipSync } from 'fflate'
+import { stampPngBytes } from './pngMeta'
 import type { DitherSettings, SourceFrame } from '../types'
 import { PRIORITY, ProcessingEngine } from '../engine/ProcessingEngine'
-import { postSoftenOf, softenCanvas } from './postResample'
 import { downloadBlob } from './export'
 
 export interface AnimationExportOptions {
@@ -60,8 +60,7 @@ function computeOutputSize(
 }
 
 /** Render one timeline frame stretched onto the fixed output canvas —
- *  identical framing to the viewport (nearest neighbor, full rect),
- *  including the optional post-dither softening as the last step. */
+ *  identical framing to the viewport (nearest neighbor, full rect). */
 async function renderFrameInto(
   engine: ProcessingEngine,
   frames: SourceFrame[],
@@ -74,8 +73,6 @@ async function renderFrameInto(
   ctx.clearRect(0, 0, canvas.width, canvas.height)
   ctx.imageSmoothingEnabled = false
   ctx.drawImage(bmp, 0, 0, canvas.width, canvas.height)
-  const soften = postSoftenOf(settings)
-  if (soften) softenCanvas(canvas, soften.method, canvas.width / bmp.width)
 }
 
 /* ---------- MP4 ---------- */
@@ -208,7 +205,9 @@ export async function exportPngSequence(opts: AnimationExportOptions): Promise<v
     if (handle.cancelled) return
     await renderFrameInto(engine, frames, i, settingsAt(i), canvas)
     const blob = await canvas.convertToBlob({ type: 'image/png' })
-    files[`frame_${String(i + 1).padStart(4, '0')}.png`] = new Uint8Array(await blob.arrayBuffer())
+    files[`frame_${String(i + 1).padStart(4, '0')}.png`] = stampPngBytes(
+      new Uint8Array(await blob.arrayBuffer()),
+    )
     onProgress((i + 1) / totalFrames)
   }
   if (handle.cancelled) return

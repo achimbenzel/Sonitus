@@ -1,14 +1,13 @@
 /* ============================================================
    Themeable app logo.
 
-   The SVG (src/assets/sonitos-logo-placeholder.svg — replace the
-   file with the final Sonitos logo, same filename) is used as a
-   CSS mask, so a black/any-color source SVG is recolored purely
-   via CSS: each theme sets `--logo-color` (falls back to the ink
-   color). Nothing in the SVG file itself is modified.
+   The Sonitus logo (src/assets/sonitus.svg, a black source SVG)
+   is used as a CSS mask, so it is recolored purely via CSS: each
+   theme sets `--logo-color` (falls back to the ink color).
+   Nothing in the SVG file itself is modified.
    ============================================================ */
 
-import logoUrl from '../../assets/sonitos-logo-placeholder.svg'
+import logoUrl from '../../assets/sonitus.svg'
 
 interface AppLogoProps {
   size?: number

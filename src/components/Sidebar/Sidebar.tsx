@@ -354,25 +354,6 @@ export function Sidebar({
           unit="×"
           onChange={(v) => update({ pixelScale: v })}
         />
-        {/* Post-dither resampling: the very last pipeline step — rounds
-            the enlarged dither pixels without changing dimensions. */}
-        <ToggleRow
-          label="Post-dither soften"
-          checked={settings.postResample}
-          onChange={(v) => update({ postResample: v })}
-        />
-        <SelectRow
-          label="Resampling"
-          value={settings.resampling}
-          disabled={!settings.postResample}
-          options={[
-            { value: 'nearest', label: 'Nearest (crisp)' },
-            { value: 'linear', label: 'Linear' },
-            { value: 'soft', label: 'Soft' },
-            { value: 'bleeding', label: 'Bleeding Soft' },
-          ]}
-          onChange={(v) => update({ resampling: v as DitherSettings['resampling'] })}
-        />
         <div className="import-meta" style={{ marginTop: 0 }}>
           Output size: <b>
             {frameSize

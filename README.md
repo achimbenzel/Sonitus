@@ -36,11 +36,11 @@ npm run electron:build:linux  # Linux (AppImage + deb)
 ```
 
 Packaging is configured in `electron-builder.yml`; appId and macOS
-signing/notarization are marked with TODO comments there. The window and
-installer icons (`build/icon.ico`, `build/icon.png`) are **placeholders
-generated from the logo SVG** — drop in the final files under the same
-names (plus `build/icon.icns` for macOS). The renderer runs sandboxed with
-context isolation and no Node access.
+signing/notarization are marked with TODO comments there. App icons:
+`build/icon.ico` is the provided Sonitus .ico (Windows), `build/icon.png`
+(Linux + dev window) and `build/icon.icns` (macOS, PNG-based) are rendered
+from the Sonitus logo SVG. The renderer runs sandboxed with context
+isolation and no Node access.
 
 ## Architecture
 
@@ -52,9 +52,9 @@ src/
 ├── App.tsx                     orchestrator: state, playback loop, shortcuts
 ├── types/                      all shared TypeScript types + defaults
 ├── assets/
-│   ├── sonitos-logo-placeholder.svg   ← replace with the final logo (any
-│   │                           single-color SVG works: it is rendered as a
-│   │                           CSS mask and tinted per theme via --logo-color)
+│   ├── sonitus.svg             the Sonitus logo (black source SVG, rendered
+│   │                           as a CSS mask and tinted per theme via
+│   │                           --logo-color — the file itself is untouched)
 │   └── fonts/                  DM Sans + JetBrains Mono + OFL licenses
 ├── themes/uiStyles.ts          UI style registry + localStorage persistence
 ├── keyframes/keyframes.ts      keyframe storage, interpolation, navigation
@@ -80,15 +80,16 @@ src/
 │   │                           scrub, Ctrl+wheel zoom, keyframe markers, thumbs
 │   ├── ProgressOverlay/        import/export progress + cancel
 │   ├── modals/                 Settings (UI styles, custom CSS) + About (licenses)
-│   └── ui/                     Select, NumberField, ColorField, Modal,
-│                               IconButton, AppLogo (CSS-mask logo) primitives
+│   └── ui/                     Select, NumberField, ColorField, ColorPicker
+│                               (app-styled picker popover), Modal, IconButton,
+│                               AppLogo (CSS-mask logo) primitives
 ├── utils/
 │   ├── imageLoad.ts            image/sequence import, MP4 frame extraction
 │   ├── export.ts               PNG/JPEG/SVG stills, zipped PNG sequences,
 │   │                           CMYK screenprint plates
 │   ├── videoExport.ts          MP4 (WebCodecs + mp4-muxer) and GIF (gifenc)
-│   ├── postResample.ts         post-dither soften (blur + palette requantize)
-│   └── presets.ts              JSON preset export + validated import
+│   ├── pngMeta.ts              tEXt metadata chunks for exported PNGs
+│   └── presets.ts              .sonitus preset export + validated import
 ├── hooks/useSettingsHistory.ts combined settings+keyframe undo/redo history
 └── styles/
     ├── fonts.css               local @font-face declarations
@@ -141,9 +142,15 @@ void-and-cluster blue noise, value noise). Resolution slider (internal
 processing width), brightness / contrast / gamma / threshold / pre-blur /
 invert, 2–16 grey levels, output pixel scale 1–16×.
 
-**Color input** — unified control: swatch (opens the native eyedropper) +
-validated HEX field (`#fff`, `#ff6600`, live swatch preview) with a compact
-preset chip row underneath.
+**Color input** — unified control: swatch + validated HEX field (`#fff`,
+`#ff6600`, live swatch preview) with a compact preset chip row underneath.
+The swatch opens a fully **app-styled color picker** popover (no native
+browser picker): saturation/value field, hue slider, R/G/B and HEX inputs,
+and a screen eyedropper (EyeDropper API, Chrome/Electron). It stays open
+through drags and edits, follows all five UI themes, and only closes on
+outside click, Escape or the swatch toggle. The same picker drives the
+custom-palette editor, whose entries reorder with Move up / Move down
+arrows (disabled at the ends).
 
 **Palette** — mono mode with highlight/shadow color pickers + presets
 (B/W, off-white/black, green/black, orange/black, blue/cream) and multi-level
@@ -205,20 +212,19 @@ nearest-neighbor framing as the viewport — keyframed resolution/pixel scale
 reads as chunkier pixels, never as a crop or zoom. Progress reports inline
 in the sidebar Export section (cancellable).
 
-**Post-dither resampling** — an optional final pipeline step (toggle +
-method in the Export section): after dithering and after the pixel-scale
-upscale, the enlarged dither pixels are softened/rounded (Linear / Soft /
-Bleeding Soft — the latter adds a contrast pull for swollen, ink-like
-shapes). Output dimensions and pattern size stay identical; with the toggle
-off the result is bit-for-bit crisp. Applied identically in the viewport
-preview and in PNG/JPEG, sequence, MP4, GIF and CMYK exports (SVG stays
-vector-crisp). Included in presets.
+**PNG metadata** — every exported PNG (stills, sequence frames, CMYK
+plates) is stamped with standard `tEXt` chunks (`Software: Sonitus`,
+`Creator Tool: Sonitus`, `Description: Created with Sonitus`), written by a
+small dependency-free chunk injector (`utils/pngMeta.ts`); files stay valid
+for common viewers and design tools.
 
 **Presets** — full parameter set (incl. FPS/loop, color mapping, palette
-style and custom palette) exports as JSON with a user-chosen name (used for
-the filename); import is validated field-by-field with clear error messages
-and stays compatible with older presets — missing fields fall back to safe
-defaults, and the derived image palette is never persisted.
+style and custom palette) exports as a **`.sonitus`** file (plain JSON
+inside) with a user-chosen name (used for the filename); import accepts
+`.sonitus` and legacy `.json` presets, is validated field-by-field with
+clear error messages and stays compatible with older presets — missing
+fields fall back to safe defaults, removed fields (e.g. the old resampling
+options) are ignored, and the derived image palette is never persisted.
 
 **Undo/redo** — one combined history for parameters **and** keyframes:
 adding/removing/moving a keyframe, value saves and easing changes all undo
@@ -246,7 +252,7 @@ while typing in inputs.
 - **Legacy color mapping is a faithful re-implementation, not a pixel clone**
   of the old prototype: it reproduces its math (Rec.601 luminance, bias at
   quantization, per-channel RGB levels) inside the current pipeline, so
-  surrounding features (pre-blur, resampling, exports) still apply.
+  surrounding features (pre-blur, exports) still apply.
 - **Extracted image palettes come from the first frame** of a sequence (by
   design, to keep colors stable across frames); if a later frame introduces
   entirely new colors they map to the nearest existing palette entry — use a
@@ -254,9 +260,15 @@ while typing in inputs.
 - **Changing FPS re-snaps keyframes to the new frame grid**; at lower FPS two
   keyframes can land on the same frame, in which case the later one wins
   (deduped deterministically).
-- **The Electron app icons are placeholders** generated from the logo SVG —
-  replace `build/icon.ico` / `build/icon.png` (and add `build/icon.icns`)
-  before shipping installers.
+- **macOS icon is a PNG-based `.icns`** (256 + 512 px entries rendered from
+  the logo SVG) — accepted by macOS, but a designed multi-size `.icns` can
+  replace `build/icon.icns` any time; Windows uses the provided multi-size
+  `.ico` directly.
+- **PNG metadata uses `tEXt` chunks** (the PNG-native standard read by
+  exiftool, GIMP, ImageMagick etc.); full XMP metadata blocks are not
+  written. JPEG/SVG/MP4/GIF exports carry no metadata.
+- **The screen eyedropper needs the EyeDropper API** (Chrome and Electron
+  have it); in browsers without it the button simply isn't shown.
 - **MP4 extraction is seek-based** (fixed FPS you choose at import), not a
   demuxer — it's codec-agnostic and reliable in Chrome, but doesn't recover
   the exact original frame timing. A WebCodecs demuxer path can be added

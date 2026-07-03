@@ -70,16 +70,19 @@ export function TopBar({
       <span className="topbar-sep" />
 
       <div className="topbar-group" role="toolbar" aria-label="Presets">
-        <IconButton label="Save preset (JSON)" onClick={onSavePreset}>
+        <IconButton label="Save preset (.sonitus)" onClick={onSavePreset}>
           <Save size={15} />
         </IconButton>
-        <IconButton label="Load preset (JSON)" onClick={() => presetInputRef.current?.click()}>
+        <IconButton
+          label="Load preset (.sonitus / legacy .json)"
+          onClick={() => presetInputRef.current?.click()}
+        >
           <FileInput size={15} />
         </IconButton>
         <input
           ref={presetInputRef}
           type="file"
-          accept=".json,application/json"
+          accept=".sonitus,.json,application/json"
           style={{ display: 'none' }}
           onChange={(e) => {
             const f = e.target.files?.[0]

@@ -285,8 +285,49 @@ input[type="number"]{-moz-appearance:textfield;appearance:textfield}
 .color-swatch:hover{border-color:var(--accent);box-shadow:var(--gloss-inset),0 2px 8px rgba(0,0,0,.5),var(--glow)}
 .color-swatch::after{content:"";position:absolute;inset:0;border-radius:inherit;
   background:linear-gradient(180deg,rgba(255,255,255,.25),transparent 45%);pointer-events:none}
-.color-swatch input[type="color"]{position:absolute;inset:-4px;width:calc(100% + 8px);height:calc(100% + 8px);
-  opacity:0;cursor:pointer;border:none;padding:0}
+button.color-swatch{padding:0}
+.color-swatch.open{border-color:var(--accent);
+  box-shadow:var(--gloss-inset),0 2px 8px rgba(0,0,0,.5),var(--glow)}
+.color-swatch:disabled{opacity:.4;cursor:default;pointer-events:none}
+
+/* ============================================================
+   COLOR PICKER POPOVER — app-styled replacement for the native
+   picker: SV field, hue slider, eyedropper, hex + RGB inputs
+   ============================================================ */
+.cpick-anchor{position:relative;display:inline-flex;flex-shrink:0}
+.cpick{position:absolute;top:calc(100% + 6px);left:0;z-index:90;width:238px;padding:10px;
+  display:flex;flex-direction:column;gap:10px;border-radius:var(--radius-med);
+  border:1px solid var(--line-strong);
+  background:linear-gradient(180deg,rgba(15,36,45,.99),rgba(9,22,28,.99));
+  box-shadow:0 22px 54px rgba(0,0,0,.65),var(--gloss-inset);cursor:default}
+.cpick-sv{position:relative;height:128px;border-radius:var(--radius-small);cursor:crosshair;
+  border:1px solid var(--line-strong);touch-action:none;
+  background-image:linear-gradient(180deg,transparent,#000),linear-gradient(90deg,#fff,transparent)}
+.cpick-sv-thumb{position:absolute;width:14px;height:14px;border-radius:50%;
+  transform:translate(-50%,-50%);border:2px solid #fff;
+  box-shadow:0 0 0 1px rgba(0,0,0,.55),0 2px 6px rgba(0,0,0,.5);pointer-events:none}
+.cpick-huerow{display:flex;align-items:center;gap:8px}
+.cpick-eyedrop{width:26px;height:26px;flex-shrink:0}
+.cpick-preview{width:26px;height:26px;border-radius:50%;flex-shrink:0;
+  border:1px solid var(--line-strong);box-shadow:var(--gloss-inset)}
+.cpick-hue{position:relative;flex:1;height:12px;border-radius:999px;cursor:pointer;touch-action:none;
+  border:1px solid var(--line-strong);
+  background:linear-gradient(90deg,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00)}
+.cpick-hue-thumb{position:absolute;top:50%;width:15px;height:15px;border-radius:50%;
+  transform:translate(-50%,-50%);background:transparent;border:3px solid #fff;
+  box-shadow:0 0 0 1px rgba(0,0,0,.55),0 1px 4px rgba(0,0,0,.5);pointer-events:none}
+.cpick-inputs{display:grid;grid-template-columns:1.7fr 1fr 1fr 1fr;gap:6px}
+.cpick-field{display:flex;flex-direction:column;gap:3px;min-width:0}
+.cpick-field input{width:100%;min-width:0;font-family:var(--font-mono);font-size:.6rem;font-weight:700;
+  letter-spacing:.05em;color:var(--ink);text-align:center;padding:.32rem .15rem;
+  border-radius:var(--radius-small);border:1px solid var(--line-strong);outline:none;
+  background:linear-gradient(180deg,rgba(0,0,0,.35),rgba(15,36,45,.9));
+  box-shadow:inset 0 1px 3px rgba(0,0,0,.4);
+  transition:border-color var(--transition-fast),box-shadow var(--transition-fast)}
+.cpick-field input:focus{border-color:var(--accent);
+  box-shadow:inset 0 1px 3px rgba(0,0,0,.4),0 0 10px rgba(70,179,204,.25)}
+.cpick-field span{font-family:var(--font-mono);font-size:.52rem;font-weight:700;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--ink-dim);text-align:center;user-select:none}
 
 /* unified color field: [swatch][hex input] + preset chips below */
 .select--compact .select-trigger{padding:.28rem .5rem;font-size:.56rem;border-radius:6px}

@@ -20,7 +20,8 @@ export function PresetNameModal({ onSave, onClose }: PresetNameModalProps) {
   return (
     <Modal title="Save Preset" onClose={onClose}>
       <p className="modal-note">
-        Name your preset. The name is stored in the JSON file and used as the filename.
+        Name your preset. It is saved as a <b>.sonitus</b> file (JSON inside) and the
+        name is stored in the file and used as the filename.
       </p>
       <input
         type="text"

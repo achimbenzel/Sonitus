@@ -8,10 +8,11 @@
    a pure web app and needs none (contextIsolation + sandbox on,
    nodeIntegration off, minimal preload).
 
+   App icons: build/icon.ico (provided Sonitus .ico, Windows),
+   build/icon.png (Linux + dev window) and build/icon.icns (macOS,
+   rendered from the Sonitus logo SVG).
+
    TODO before shipping:
-   - app icon: build/icon.ico + build/icon.png are PLACEHOLDERS
-     generated from the logo SVG — replace them with the final icons
-     (same filenames); add build/icon.icns for macOS
    - appId / productName: adjust in electron-builder.yml
    - macOS signing & notarization: see comments in electron-builder.yml
    ============================================================ */

@@ -40,23 +40,12 @@ export type PaletteStyle =
   | 'contrast'
   | 'custom'
 
-/** Post-dither resampling method: applied AFTER dithering and AFTER
- *  the pixel-scale upscale, as the very last step of the pipeline.
- *  It softens/rounds the enlarged dither pixels without changing the
- *  output dimensions or the pattern size. 'bleeding' additionally
- *  pulls contrast back up for a rounded "ink bleed" look. */
-export type ResamplingMethod = 'nearest' | 'linear' | 'soft' | 'bleeding'
-
 /** All user-tweakable dither parameters. Kept flat so it can be
  *  hashed, serialized as a preset and diffed cheaply. */
 export interface DitherSettings {
   algorithm: AlgorithmId
   /** Internal processing width in pixels (aspect ratio preserved). */
   resolution: number
-  /** Post-dither softening method (used when postResample is on). */
-  resampling: ResamplingMethod
-  /** Enable the post-dither resampling pass (off = crisp output). */
-  postResample: boolean
   /** -100 .. 100 */
   brightness: number
   /** -100 .. 100 */
@@ -99,8 +88,6 @@ export type PipelineSettings = Omit<DitherSettings, 'resolution' | 'pixelScale'>
 export const DEFAULT_SETTINGS: DitherSettings = {
   algorithm: 'floyd-steinberg',
   resolution: 320,
-  resampling: 'soft',
-  postResample: false,
   brightness: 0,
   contrast: 0,
   gamma: 1,

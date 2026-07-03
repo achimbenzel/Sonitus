@@ -45,9 +45,11 @@ export function exportPreset(
     fps,
     loop,
   }
+  // Sonitus preset files use the .sonitus extension; the content is
+  // plain JSON, and import still accepts older .json preset files.
   downloadBlob(
     new Blob([JSON.stringify(preset, null, 2)], { type: 'application/json' }),
-    `${slugify(presetName)}.json`,
+    `${slugify(presetName)}.sonitus`,
   )
 }
 
@@ -106,14 +108,9 @@ export function parsePreset(json: string): ParsedPreset {
   if (paletteMode !== 'mono' && paletteMode !== 'image') {
     throw new Error('paletteMode must be "mono" or "image"')
   }
-  const resampling = obj.resampling ?? DEFAULT_SETTINGS.resampling
-  if (
-    resampling !== 'nearest' && resampling !== 'linear' &&
-    resampling !== 'soft' && resampling !== 'bleeding'
-  ) {
-    throw new Error('resampling must be nearest, linear, soft or bleeding')
-  }
   // Older presets fall back to the current mapping / dominant style.
+  // (`resampling` / `postResample` from old preset files are ignored —
+  // the post-dither soften feature was removed.)
   const colorMapping = obj.colorMapping ?? DEFAULT_SETTINGS.colorMapping
   if (colorMapping !== 'current' && colorMapping !== 'legacy') {
     throw new Error('colorMapping must be "current" or "legacy"')
@@ -138,8 +135,6 @@ export function parsePreset(json: string): ParsedPreset {
   const settings: DitherSettings = {
     algorithm: algorithm as DitherSettings['algorithm'],
     resolution: Math.round(num(obj, 'resolution', 8, 1024, d.resolution)),
-    resampling,
-    postResample: bool(obj, 'postResample', d.postResample),
     brightness: num(obj, 'brightness', -100, 100, d.brightness),
     contrast: num(obj, 'contrast', -100, 100, d.contrast),
     gamma: num(obj, 'gamma', 0.2, 3, d.gamma),

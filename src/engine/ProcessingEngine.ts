@@ -101,8 +101,8 @@ export class ProcessingEngine {
   private scratch: OffscreenCanvas | null = null
 
   /** Deterministic hash of every processing-relevant setting.
-   *  pixelScale, resampling and postResample are excluded — they only
-   *  affect the cheap display/export composite, not worker output. */
+   *  pixelScale is excluded — it only affects the cheap display/export
+   *  upscale, not worker output. */
   settingsHash(s: DitherSettings): string {
     return [
       s.algorithm, s.resolution, s.brightness, s.contrast, s.gamma, s.threshold,
