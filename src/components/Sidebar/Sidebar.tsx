@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { Clapperboard, Download, FileArchive, Film, FolderOpen, ImagePlus, Images, Layers, Save, X } from 'lucide-react'
-import type { DitherSettings, ExportKind, KeyframableParam, ProjectKind } from '../../types'
+import type { DitherSettings, EffectId, ExportKind, KeyframableParam, ProjectKind } from '../../types'
 import { DEFAULT_SETTINGS } from '../../types'
 import { ALGORITHMS, isErrorDiffusion } from '../../dither/algorithms/index'
 import { MONO_PRESETS } from '../../dither/palette'
@@ -11,6 +11,26 @@ import { NumberField } from '../ui/NumberField'
 import { PaletteEditor } from './PaletteEditor'
 
 const DPI_PRESETS = [72, 96, 150, 200, 300, 600]
+
+/* Per-effect UI definition; rows render in settings.fxOrder order.
+   `valueKey` is the keyframable strength parameter. */
+const EFFECT_DEFS: Record<EffectId, {
+  label: string
+  onKey: 'fxBlurOn' | 'fxSharpenOn' | 'fxEdgeOn' | 'fxGlowOn' | 'fxNoiseOn' | 'fxPosterizeOn'
+  valueKey: KeyframableParam & keyof DitherSettings
+  min: number
+  max: number
+  step?: number
+  decimals?: number
+  unit?: string
+}> = {
+  blur: { label: 'Blur', onKey: 'fxBlurOn', valueKey: 'preBlur', min: 0, max: 10, step: 0.5, decimals: 1, unit: 'px' },
+  sharpen: { label: 'Sharpen', onKey: 'fxSharpenOn', valueKey: 'fxSharpen', min: 0, max: 100 },
+  edge: { label: 'Edge boost', onKey: 'fxEdgeOn', valueKey: 'fxEdge', min: 0, max: 100 },
+  glow: { label: 'Glow', onKey: 'fxGlowOn', valueKey: 'fxGlow', min: 0, max: 100 },
+  noise: { label: 'Noise', onKey: 'fxNoiseOn', valueKey: 'fxNoise', min: 0, max: 100 },
+  posterize: { label: 'Posterize', onKey: 'fxPosterizeOn', valueKey: 'fxPosterize', min: 2, max: 16, unit: ' levels' },
+}
 
 interface SidebarProps {
   /** Evaluated (keyframe-aware) settings for display. */
@@ -74,6 +94,7 @@ export function Sidebar({
   /** True while the user works with a non-preset DPI value. */
   const [dpiCustomMode, setDpiCustomMode] = useState(false)
   const dpiIsPreset = DPI_PRESETS.includes(settings.dpi)
+  const fxOrder = settings.fxOrder
 
   const errorDiffusion = isErrorDiffusion(settings.algorithm)
   const mono = settings.paletteMode === 'mono'
@@ -249,74 +270,36 @@ export function Sidebar({
         />
       </Section>
 
-      {/* ---------- EFFECTS (pre-dither chain) ---------- */}
+      {/* ---------- EFFECTS (pre-dither chain, user-ordered) ---------- */}
       <Section label="Effects">
         <div className="fxnote">Applied top to bottom, before dithering</div>
-        <EffectRow
-          label="Blur"
-          on={settings.fxBlurOn}
-          value={settings.preBlur}
-          min={0}
-          max={10}
-          step={0.5}
-          decimals={1}
-          unit="px"
-          resetValue={d.preBlur}
-          kf={kfControl('preBlur')}
-          onToggle={(on) => update({ fxBlurOn: on })}
-          onChange={(v) => updateParam('preBlur', v)}
-        />
-        <EffectRow
-          label="Sharpen"
-          on={settings.fxSharpenOn}
-          value={settings.fxSharpen}
-          min={0}
-          max={100}
-          resetValue={d.fxSharpen}
-          onToggle={(on) => update({ fxSharpenOn: on })}
-          onChange={(v) => update({ fxSharpen: v })}
-        />
-        <EffectRow
-          label="Edge boost"
-          on={settings.fxEdgeOn}
-          value={settings.fxEdge}
-          min={0}
-          max={100}
-          resetValue={d.fxEdge}
-          onToggle={(on) => update({ fxEdgeOn: on })}
-          onChange={(v) => update({ fxEdge: v })}
-        />
-        <EffectRow
-          label="Glow"
-          on={settings.fxGlowOn}
-          value={settings.fxGlow}
-          min={0}
-          max={100}
-          resetValue={d.fxGlow}
-          onToggle={(on) => update({ fxGlowOn: on })}
-          onChange={(v) => update({ fxGlow: v })}
-        />
-        <EffectRow
-          label="Noise"
-          on={settings.fxNoiseOn}
-          value={settings.fxNoise}
-          min={0}
-          max={100}
-          resetValue={d.fxNoise}
-          onToggle={(on) => update({ fxNoiseOn: on })}
-          onChange={(v) => update({ fxNoise: v })}
-        />
-        <EffectRow
-          label="Posterize"
-          on={settings.fxPosterizeOn}
-          value={settings.fxPosterize}
-          min={2}
-          max={16}
-          unit=" levels"
-          resetValue={d.fxPosterize}
-          onToggle={(on) => update({ fxPosterizeOn: on })}
-          onChange={(v) => update({ fxPosterize: v })}
-        />
+        {fxOrder.map((id, idx) => {
+          const def = EFFECT_DEFS[id]
+          const moveTo = (dir: -1 | 1) => {
+            const next = [...fxOrder]
+            ;[next[idx], next[idx + dir]] = [next[idx + dir], next[idx]]
+            update({ fxOrder: next })
+          }
+          return (
+            <EffectRow
+              key={id}
+              label={def.label}
+              on={settings[def.onKey] as boolean}
+              value={settings[def.valueKey] as number}
+              min={def.min}
+              max={def.max}
+              step={def.step}
+              decimals={def.decimals}
+              unit={def.unit}
+              resetValue={d[def.valueKey] as number}
+              kf={kfControl(def.valueKey)}
+              onMoveUp={idx > 0 ? () => moveTo(-1) : null}
+              onMoveDown={idx < fxOrder.length - 1 ? () => moveTo(1) : null}
+              onToggle={(on) => update({ [def.onKey]: on } as Partial<DitherSettings>)}
+              onChange={(v) => updateParam(def.valueKey, v)}
+            />
+          )
+        })}
       </Section>
 
       {/* ---------- PALETTE ---------- */}

@@ -691,3 +691,7 @@ button.color-swatch{padding:0}
   background:linear-gradient(180deg,rgba(15,36,45,.98),rgba(9,22,28,.99));
   box-shadow:0 12px 34px rgba(0,0,0,.6),var(--gloss-inset)}
 .toast.error{border-color:rgba(230,120,120,.5);color:#f5c8c8}
+
+/* effect chain reorder arrows */
+.fx-orderbtns{display:inline-flex;gap:1px;margin-left:4px;flex-shrink:0}
+.fx-orderbtns .iconbtn{width:20px;height:20px}

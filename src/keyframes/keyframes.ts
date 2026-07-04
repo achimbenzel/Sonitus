@@ -25,6 +25,12 @@ export const KEYFRAMABLE_PARAMS: readonly KeyframableParam[] = [
   'greyLevels',
   'lightColor',
   'darkColor',
+  // effect strengths (applied while the effect's toggle is on)
+  'fxSharpen',
+  'fxEdge',
+  'fxGlow',
+  'fxNoise',
+  'fxPosterize',
 ]
 
 export const PARAM_LABELS: Record<KeyframableParam, string> = {
@@ -33,11 +39,16 @@ export const PARAM_LABELS: Record<KeyframableParam, string> = {
   contrast: 'Contrast',
   gamma: 'Gamma',
   threshold: 'Threshold',
-  preBlur: 'Pre-blur',
+  preBlur: 'Blur radius',
   greyLevels: 'Grey levels',
   pixelScale: 'Pixel scale',
   lightColor: 'Highlight',
   darkColor: 'Shadow',
+  fxSharpen: 'Sharpen',
+  fxEdge: 'Edge boost',
+  fxGlow: 'Glow',
+  fxNoise: 'Noise',
+  fxPosterize: 'Posterize',
 }
 
 /* ---------- easing ---------- */
@@ -59,7 +70,7 @@ const EASING_FNS: Record<EasingId, (t: number) => number> = {
   hold: () => 0,
 }
 
-const INT_PARAMS = new Set<KeyframableParam>(['resolution', 'greyLevels', 'pixelScale'])
+const INT_PARAMS = new Set<KeyframableParam>(['resolution', 'greyLevels', 'pixelScale', 'fxPosterize'])
 const COLOR_PARAMS = new Set<KeyframableParam>(['lightColor', 'darkColor'])
 
 export function isColorParam(param: KeyframableParam): boolean {

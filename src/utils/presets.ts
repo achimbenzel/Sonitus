@@ -6,6 +6,7 @@
 
 import type { DitherSettings } from '../types'
 import { DEFAULT_SETTINGS } from '../types'
+import { normalizeFxOrder } from '../dither/effects'
 import { ALGORITHMS } from '../dither/algorithms/index'
 import { downloadBlob } from './export'
 
@@ -155,6 +156,8 @@ export function parsePreset(json: string): ParsedPreset {
     fxNoise: num(obj, 'fxNoise', 0, 100, d.fxNoise),
     fxPosterizeOn: bool(obj, 'fxPosterizeOn', d.fxPosterizeOn),
     fxPosterize: Math.round(num(obj, 'fxPosterize', 2, 16, d.fxPosterize)),
+    // Unknown/missing entries are repaired; old presets get the default.
+    fxOrder: normalizeFxOrder(obj.fxOrder),
     screenAngle: num(obj, 'screenAngle', 0, 90, d.screenAngle),
     invert: bool(obj, 'invert', d.invert),
     serpentine: bool(obj, 'serpentine', d.serpentine),

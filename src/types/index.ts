@@ -67,6 +67,18 @@ export type PaletteStyle =
   | 'contrast'
   | 'custom'
 
+/** Pre-dither effect identifiers, in their default chain order. */
+export type EffectId = 'blur' | 'sharpen' | 'edge' | 'glow' | 'noise' | 'posterize'
+
+export const DEFAULT_FX_ORDER: readonly EffectId[] = [
+  'blur',
+  'sharpen',
+  'edge',
+  'glow',
+  'noise',
+  'posterize',
+]
+
 /** All user-tweakable dither parameters. Kept flat so it can be
  *  hashed, serialized as a preset and diffed cheaply. */
 export interface DitherSettings {
@@ -101,6 +113,8 @@ export interface DitherSettings {
   /** #6 Posterize, toggle + levels 2..16. */
   fxPosterizeOn: boolean
   fxPosterize: number
+  /** Order the effect chain runs in (and is listed in the sidebar). */
+  fxOrder: EffectId[]
   /** Halftone screen angle in degrees (screen-halftone only), 0..90. */
   screenAngle: number
   invert: boolean
@@ -153,6 +167,7 @@ export const DEFAULT_SETTINGS: DitherSettings = {
   fxNoise: 30,
   fxPosterizeOn: false,
   fxPosterize: 6,
+  fxOrder: [...DEFAULT_FX_ORDER],
   screenAngle: 45,
   invert: false,
   serpentine: true,
@@ -202,6 +217,12 @@ export type KeyframableParam =
   | 'pixelScale'
   | 'lightColor'
   | 'darkColor'
+  // effect strengths (each applies while its effect toggle is on)
+  | 'fxSharpen'
+  | 'fxEdge'
+  | 'fxGlow'
+  | 'fxNoise'
+  | 'fxPosterize'
 
 /** Easing applied to the transition FROM a keyframe to the next one. */
 export type EasingId = 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out' | 'hold'

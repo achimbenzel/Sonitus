@@ -4,16 +4,15 @@
    reprocessed with identical settings is pixel-identical, which
    keeps the playback buffer cache valid.
 
-   Fixed order (matches the sidebar top-to-bottom):
-     1. Blur        (toggle + preBlur radius, keyframable)
-     2. Sharpen     (unsharp mask)
-     3. Edge boost  (adds Sobel edge energy)
-     4. Glow        (screen-blends a blurred copy)
-     5. Noise       (deterministic grain)
-     6. Posterize   (per-channel level quantization)
+   The chain order is user-controlled (`fxOrder` in the settings,
+   reordered with the sidebar arrows) and defaults to:
+     Blur → Sharpen → Edge boost → Glow → Noise → Posterize
+   Each step only runs while its enable toggle is on; strengths are
+   keyframable, so per-frame values flow in via evaluated settings.
    ============================================================ */
 
-import type { PipelineSettings } from '../types'
+import type { EffectId, PipelineSettings } from '../types'
+import { DEFAULT_FX_ORDER } from '../types'
 import { whiteNoise } from './algorithms/noise'
 
 /** Separable box blur on RGB (alpha untouched, avoids edge halos).
@@ -111,14 +110,17 @@ function sobelEdges(data: Uint8ClampedArray, w: number, h: number): Float32Array
 
 export { sobelEdges }
 
-/** Runs the enabled pre-dither effects in chain order, in place. */
-export function applyEffects(data: Uint8ClampedArray, w: number, h: number, s: PipelineSettings): void {
-  // 1. Blur — only when its toggle is enabled
-  const blurRadius = Math.round(s.preBlur)
-  if (s.fxBlurOn && blurRadius > 0) boxBlurRgb(data, w, h, blurRadius)
+type EffectStep = (data: Uint8ClampedArray, w: number, h: number, s: PipelineSettings) => void
 
-  // 2. Sharpen — unsharp mask: src + k · (src − blur(src))
-  if (s.fxSharpenOn && s.fxSharpen > 0) {
+const EFFECT_STEPS: Record<EffectId, EffectStep> = {
+  // Blur — box blur at the (keyframable) radius
+  blur: (data, w, h, s) => {
+    const radius = Math.round(s.preBlur)
+    if (s.fxBlurOn && radius > 0) boxBlurRgb(data, w, h, radius)
+  },
+  // Sharpen — unsharp mask: src + k · (src − blur(src))
+  sharpen: (data, w, h, s) => {
+    if (!s.fxSharpenOn || s.fxSharpen <= 0) return
     const soft = toFloatRgb(data)
     blurFloatRgb(soft, w, h, 1)
     const k = (s.fxSharpen / 100) * 1.6
@@ -127,10 +129,10 @@ export function applyEffects(data: Uint8ClampedArray, w: number, h: number, s: P
       data[i + 1] = data[i + 1] + k * (data[i + 1] - soft[p + 1])
       data[i + 2] = data[i + 2] + k * (data[i + 2] - soft[p + 2])
     }
-  }
-
-  // 3. Edge boost — brighten along Sobel edges
-  if (s.fxEdgeOn && s.fxEdge > 0) {
+  },
+  // Edge boost — brighten along Sobel edges
+  edge: (data, w, h, s) => {
+    if (!s.fxEdgeOn || s.fxEdge <= 0) return
     const mag = sobelEdges(data, w, h)
     const k = (s.fxEdge / 100) * 170
     for (let p = 0, i = 0; p < mag.length; p++, i += 4) {
@@ -140,10 +142,10 @@ export function applyEffects(data: Uint8ClampedArray, w: number, h: number, s: P
       data[i + 1] = data[i + 1] + add
       data[i + 2] = data[i + 2] + add
     }
-  }
-
-  // 4. Glow — screen-blend a wide blurred copy
-  if (s.fxGlowOn && s.fxGlow > 0) {
+  },
+  // Glow — screen-blend a wide blurred copy
+  glow: (data, w, h, s) => {
+    if (!s.fxGlowOn || s.fxGlow <= 0) return
     const soft = toFloatRgb(data)
     blurFloatRgb(soft, w, h, Math.max(2, Math.round(w / 60)))
     const g = s.fxGlow / 100
@@ -152,10 +154,10 @@ export function applyEffects(data: Uint8ClampedArray, w: number, h: number, s: P
       data[i + 1] = 255 - ((255 - data[i + 1]) * (255 - soft[p + 1] * g)) / 255
       data[i + 2] = 255 - ((255 - data[i + 2]) * (255 - soft[p + 2] * g)) / 255
     }
-  }
-
-  // 5. Noise — deterministic signed grain
-  if (s.fxNoiseOn && s.fxNoise > 0) {
+  },
+  // Noise — deterministic signed grain
+  noise: (data, w, _h, s) => {
+    if (!s.fxNoiseOn || s.fxNoise <= 0) return
     const amp = (s.fxNoise / 100) * 64
     for (let i = 0, p = 0; i < data.length; i += 4, p++) {
       const d = (whiteNoise(p % w, (p / w) | 0) - 0.5) * 2 * amp
@@ -163,10 +165,10 @@ export function applyEffects(data: Uint8ClampedArray, w: number, h: number, s: P
       data[i + 1] = data[i + 1] + d
       data[i + 2] = data[i + 2] + d
     }
-  }
-
-  // 6. Posterize — per-channel level quantization
-  if (s.fxPosterizeOn) {
+  },
+  // Posterize — per-channel level quantization
+  posterize: (data, _w, _h, s) => {
+    if (!s.fxPosterizeOn) return
     const levels = Math.min(16, Math.max(2, Math.round(s.fxPosterize)))
     const step = 255 / (levels - 1)
     for (let i = 0; i < data.length; i += 4) {
@@ -174,5 +176,30 @@ export function applyEffects(data: Uint8ClampedArray, w: number, h: number, s: P
       data[i + 1] = Math.round(data[i + 1] / step) * step
       data[i + 2] = Math.round(data[i + 2] / step) * step
     }
+  },
+}
+
+/** Sanitize a stored order: drop unknown ids and duplicates, append
+ *  any missing effects in default order — the chain always contains
+ *  every effect exactly once. */
+export function normalizeFxOrder(order: unknown): EffectId[] {
+  const seen = new Set<EffectId>()
+  const out: EffectId[] = []
+  if (Array.isArray(order)) {
+    for (const id of order) {
+      if ((DEFAULT_FX_ORDER as readonly string[]).includes(id as string) && !seen.has(id as EffectId)) {
+        seen.add(id as EffectId)
+        out.push(id as EffectId)
+      }
+    }
+  }
+  for (const id of DEFAULT_FX_ORDER) if (!seen.has(id)) out.push(id)
+  return out
+}
+
+/** Runs the enabled pre-dither effects in the user's chain order. */
+export function applyEffects(data: Uint8ClampedArray, w: number, h: number, s: PipelineSettings): void {
+  for (const id of normalizeFxOrder(s.fxOrder)) {
+    EFFECT_STEPS[id](data, w, h, s)
   }
 }

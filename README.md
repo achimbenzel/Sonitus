@@ -166,14 +166,20 @@ tones stay even; every algorithm runs in mono, image-palette and legacy RGB
 modes and in every export. Resolution slider, tone controls, 2–16 grey
 levels, output pixel scale 1–16× (default 1×).
 
-**Pre-dither effects** — a fixed-order chain applied inside the worker
-after the tone LUT and before dithering (top to bottom in the sidebar):
-Blur (keyframable radius) → Sharpen (unsharp mask) → Edge Boost (Sobel) →
-Glow (screen-blended blurred copy) → Noise (deterministic grain) →
-Posterize (2–16 levels). Every effect — including Blur — has an enable
-toggle + strength, they stack, are deterministic (cache/buffering safe)
-and apply to preview and every export. Stored in presets; presets from
-before the Blur toggle keep blurring when they carried a radius, and the
+**Pre-dither effects** — a **user-ordered** chain applied inside the
+worker after the tone LUT and before dithering, exactly in the order shown
+top-to-bottom in the sidebar (default: Blur → Sharpen → Edge Boost → Glow
+→ Noise → Posterize). Every effect has an enable toggle + strength, and
+each row carries ▲/▼ arrows to move it earlier/later in the chain (ends
+are clamped); the order is stored in presets and repaired safely when a
+preset carries unknown or missing entries. **Every effect strength is
+keyframable** with the full explicit-keyframe workflow (add / save-if-
+changed / remove-if-unchanged, draggable markers, per-segment easing, own
+timeline row) — Blur radius, Sharpen, Edge Boost, Glow, Noise and
+Posterize levels all animate; enable toggles stay static (animate a
+strength to 0 to fade an effect out). Effects stack, are deterministic
+(cache/buffering safe) and apply to preview and every export. Presets
+from before the Blur toggle keep blurring when they carried a radius, and
 removed Contrast Boost fields in old presets are ignored safely.
 
 **Color input** — unified control: swatch + validated HEX field (`#fff`,
@@ -350,9 +356,13 @@ while typing in inputs.
 - **TIFF import is not supported** — browsers cannot decode TIFF natively
   and a decoder library would outweigh its use here; convert to PNG first.
   PNG/JPG/WebP/BMP/GIF decode natively.
-- **Effect chain order is fixed** (blur → sharpen → edge → glow → noise →
-  posterize); the chain runs in the worker at processing resolution, so
-  heavy stacks stay responsive but add a few ms per frame to buffering.
+- **Effect enable toggles are not keyframable** (a judgment call on
+  "where practical"): hard on/off pops mid-animation read as glitches, and
+  every effect fades cleanly by animating its strength to 0 instead —
+  except Posterize, whose mildest setting (16 levels) is subtle but not
+  identity.
+- The effect chain runs in the worker at processing resolution, so heavy
+  stacks stay responsive but add a few ms per frame to buffering.
 - **Very long videos don't fit the 256 MB frame cache in full** at high
   processing resolutions — playback still works (frames re-process on the
   fly with a brief buffering stall on the first loop), but fully instant

@@ -4,7 +4,7 @@
 
 import { useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { ChevronLeft, ChevronRight, Diamond } from 'lucide-react'
+import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Diamond } from 'lucide-react'
 import { Select, type SelectOption } from '../ui/Select'
 
 export function Section({ label, children }: { label: string; children: ReactNode }) {
@@ -183,9 +183,9 @@ export function SliderRow({
   )
 }
 
-/** One pre-dither effect: [enable toggle][label][value] + strength
- *  slider (disabled while the effect is off). */
-export function EffectRow({ label, on, value, min, max, step = 1, unit, decimals = 0, resetValue, kf, onToggle, onChange }: {
+/** One pre-dither effect: [enable toggle][keyframe][label][value]
+ *  [▲▼ order] + strength slider (disabled while the effect is off). */
+export function EffectRow({ label, on, value, min, max, step = 1, unit, decimals = 0, resetValue, kf, onMoveUp, onMoveDown, onToggle, onChange }: {
   label: string
   on: boolean
   value: number
@@ -195,8 +195,11 @@ export function EffectRow({ label, on, value, min, max, step = 1, unit, decimals
   unit?: string
   decimals?: number
   resetValue?: number
-  /** Optional keyframe control (e.g. the keyframable Blur radius). */
+  /** Keyframe control for the (animatable) strength. */
   kf?: KfControlProps
+  /** Chain reorder actions; null disables the arrow (first/last). */
+  onMoveUp?: (() => void) | null
+  onMoveDown?: (() => void) | null
   onToggle: (on: boolean) => void
   onChange: (v: number) => void
 }) {
@@ -220,6 +223,28 @@ export function EffectRow({ label, on, value, min, max, step = 1, unit, decimals
             {unit && <span className="control-unit">{unit}</span>}
           </span>
         </span>
+        {(onMoveUp !== undefined || onMoveDown !== undefined) && (
+          <span className="fx-orderbtns">
+            <button
+              className="iconbtn"
+              disabled={!onMoveUp}
+              onClick={() => onMoveUp?.()}
+              aria-label={`Move ${label} up`}
+              title="Move up (applied earlier)"
+            >
+              <ArrowUp size={11} />
+            </button>
+            <button
+              className="iconbtn"
+              disabled={!onMoveDown}
+              onClick={() => onMoveDown?.()}
+              aria-label={`Move ${label} down`}
+              title="Move down (applied later)"
+            >
+              <ArrowDown size={11} />
+            </button>
+          </span>
+        )}
       </div>
       <input
         type="range"
