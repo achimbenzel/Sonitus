@@ -63,6 +63,95 @@ export async function buildImageFrames(
   return frames
 }
 
+/* ---------- Animated GIF / WebP (ImageDecoder / WebCodecs) ---------- */
+
+interface ImageDecoderFrame {
+  image: VideoFrame
+}
+interface ImageDecoderTrack {
+  frameCount: number
+}
+interface ImageDecoderLike {
+  tracks: { ready: Promise<void>; selectedTrack: ImageDecoderTrack | null }
+  completed: Promise<void>
+  decode(options: { frameIndex: number }): Promise<ImageDecoderFrame>
+  close(): void
+}
+interface ImageDecoderCtor {
+  new (init: { data: ArrayBuffer; type: string }): ImageDecoderLike
+  isTypeSupported(type: string): Promise<boolean>
+}
+
+function imageDecoderCtor(): ImageDecoderCtor | null {
+  return (globalThis as { ImageDecoder?: ImageDecoderCtor }).ImageDecoder ?? null
+}
+
+/**
+ * Decodes an animated GIF/WebP into timeline frames with the clip's
+ * own frame rate (from per-frame durations). Returns null when the
+ * file is a single still frame or the ImageDecoder API is missing —
+ * callers then fall back to the plain image path.
+ */
+export async function decodeAnimatedImage(
+  file: File,
+  onProgress: (v: number) => void,
+): Promise<VideoImportResult | null> {
+  const Ctor = imageDecoderCtor()
+  if (!Ctor) return null
+  const type = file.type || (/\.gif$/i.test(file.name) ? 'image/gif' : 'image/webp')
+  if (!(await Ctor.isTypeSupported(type).catch(() => false))) return null
+
+  const decoder = new Ctor({ data: await file.arrayBuffer(), type })
+  try {
+    await decoder.tracks.ready
+    // Frame counts can grow while parsing finishes — wait for all data.
+    await decoder.completed.catch(() => undefined)
+    const frameCount = decoder.tracks.selectedTrack?.frameCount ?? 1
+    if (frameCount <= 1) return null
+
+    const total = Math.min(MAX_VIDEO_FRAMES, frameCount)
+    const canvas = document.createElement('canvas')
+    const thumbCanvas = document.createElement('canvas')
+    const frames: SourceFrame[] = []
+    let totalUs = 0
+    for (let i = 0; i < total; i++) {
+      const { image } = await decoder.decode({ frameIndex: i })
+      if (i === 0) {
+        canvas.width = image.displayWidth
+        canvas.height = image.displayHeight
+      }
+      // GIFs without an explicit delay conventionally play at 10 fps.
+      totalUs += image.duration || 100_000
+      const ctx = canvas.getContext('2d')!
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+      ctx.drawImage(image, 0, 0)
+      image.close()
+      const blob = await new Promise<Blob>((resolve, reject) =>
+        canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('Frame encode failed'))), 'image/png'),
+      )
+      frames.push({
+        id: nextFrameId(),
+        index: i,
+        name: `frame_${String(i + 1).padStart(4, '0')}`,
+        width: canvas.width,
+        height: canvas.height,
+        source: blob,
+        thumb: makeThumb(canvas, canvas.width, canvas.height, thumbCanvas),
+      })
+      onProgress((i + 1) / total)
+    }
+    const measured = totalUs > 0 ? (frames.length * 1e6) / totalUs : NaN
+    const fps = normalizeFps(measured)
+    return {
+      frames,
+      fps: fps ?? FALLBACK_VIDEO_FPS,
+      fpsDetected: fps !== null,
+    }
+  } finally {
+    decoder.close()
+  }
+}
+
 function once(target: EventTarget, event: string, errorEvent = 'error'): Promise<void> {
   return new Promise((resolve, reject) => {
     const ok = () => {

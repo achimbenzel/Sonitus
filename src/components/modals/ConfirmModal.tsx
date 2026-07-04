@@ -11,10 +11,21 @@ interface ConfirmModalProps {
   /** Label of the destructive/confirming button. */
   confirmLabel: string
   onConfirm: () => void
+  /** Optional middle action (e.g. "Merge" next to "Replace"). */
+  secondaryLabel?: string
+  onSecondary?: () => void
   onClose: () => void
 }
 
-export function ConfirmModal({ title, message, confirmLabel, onConfirm, onClose }: ConfirmModalProps) {
+export function ConfirmModal({
+  title,
+  message,
+  confirmLabel,
+  onConfirm,
+  secondaryLabel,
+  onSecondary,
+  onClose,
+}: ConfirmModalProps) {
   return (
     <Modal title={title} onClose={onClose}>
       <p className="modal-note">{message}</p>
@@ -22,6 +33,17 @@ export function ConfirmModal({ title, message, confirmLabel, onConfirm, onClose 
         <button className="btn btn--sm" onClick={onClose} autoFocus>
           Cancel
         </button>
+        {secondaryLabel && onSecondary && (
+          <button
+            className="btn btn--sm"
+            onClick={() => {
+              onSecondary()
+              onClose()
+            }}
+          >
+            {secondaryLabel}
+          </button>
+        )}
         <button
           className="btn btn--sm btn--teal"
           onClick={() => {

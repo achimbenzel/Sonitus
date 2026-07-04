@@ -5,7 +5,8 @@
 
    Order of operations:
      1. tone LUT (brightness → contrast → gamma → invert)
-     2. pre-blur (separable box blur)
+     2. pre-dither effect chain (blur, sharpen, edge boost, glow,
+        noise, posterize, contrast boost — see effects.ts)
      3. dither
         - mono: luminance → N grey levels → dark/light color ramp
         - image: median-cut palette → nearest-color quantization
@@ -16,8 +17,21 @@
 import type { PipelineSettings, RawImage } from '../types'
 import { DIFFUSION_KERNELS } from './algorithms/kernels'
 import { getBayerMatrix } from './algorithms/bayer'
+import { getPatternMatrix } from './algorithms/patterns'
 import { getAlgorithm } from './algorithms/index'
-import { BLUE_NOISE_SIZE, getBlueNoise, valueNoise, whiteNoise } from './algorithms/noise'
+import {
+  BLUE_NOISE_SIZE,
+  dispersedDot,
+  gaussNoise,
+  getBlueNoise,
+  grainNoise,
+  patternNoise,
+  valueNoise,
+  whiteNoise,
+  xorPattern,
+} from './algorithms/noise'
+import { dotDiffuse } from './algorithms/dotDiffusion'
+import { applyEffects, sobelEdges } from './effects'
 import { hexToRgb, medianCutPalette, monoRamp, type RGB } from './palette'
 
 export function processImage(src: RawImage, s: PipelineSettings): RawImage {
@@ -25,8 +39,7 @@ export function processImage(src: RawImage, s: PipelineSettings): RawImage {
   const data = new Uint8ClampedArray(src.data)
 
   applyToneLut(data, s)
-  const blurRadius = Math.round(s.preBlur)
-  if (blurRadius > 0) boxBlurRgb(data, width, height, blurRadius)
+  applyEffects(data, width, height, s)
 
   if (s.paletteMode === 'image') {
     if (s.colorMapping === 'legacy') {
@@ -62,72 +75,27 @@ function applyToneLut(data: Uint8ClampedArray, s: PipelineSettings): void {
   }
 }
 
-/** Separable box blur on RGB (alpha untouched, avoids edge halos).
- *  Two passes per axis approximate a gaussian well enough here. */
-function boxBlurRgb(data: Uint8ClampedArray, w: number, h: number, radius: number): void {
-  const r = Math.min(radius, 32)
-  const tmp = new Float32Array(w * h * 3)
-  for (let i = 0, p = 0; i < data.length; i += 4, p += 3) {
-    tmp[p] = data[i]
-    tmp[p + 1] = data[i + 1]
-    tmp[p + 2] = data[i + 2]
-  }
-  blurAxis(tmp, w, h, r, true)
-  blurAxis(tmp, w, h, r, false)
-  blurAxis(tmp, w, h, r, true)
-  blurAxis(tmp, w, h, r, false)
-  for (let i = 0, p = 0; i < data.length; i += 4, p += 3) {
-    data[i] = tmp[p]
-    data[i + 1] = tmp[p + 1]
-    data[i + 2] = tmp[p + 2]
-  }
-}
-
-function blurAxis(buf: Float32Array, w: number, h: number, r: number, horizontal: boolean): void {
-  const lineLen = horizontal ? w : h
-  const lines = horizontal ? h : w
-  const stridePx = horizontal ? 1 : w
-  const window = r * 2 + 1
-  const line = new Float32Array(lineLen * 3)
-  for (let l = 0; l < lines; l++) {
-    const base = horizontal ? l * w : l
-    for (let i = 0; i < lineLen; i++) {
-      const p = (base + i * stridePx) * 3
-      line[i * 3] = buf[p]
-      line[i * 3 + 1] = buf[p + 1]
-      line[i * 3 + 2] = buf[p + 2]
-    }
-    let sr = 0
-    let sg = 0
-    let sb = 0
-    // Prime the sliding window with edge-clamped samples.
-    for (let i = -r; i <= r; i++) {
-      const j = Math.min(lineLen - 1, Math.max(0, i)) * 3
-      sr += line[j]
-      sg += line[j + 1]
-      sb += line[j + 2]
-    }
-    for (let i = 0; i < lineLen; i++) {
-      const p = (base + i * stridePx) * 3
-      buf[p] = sr / window
-      buf[p + 1] = sg / window
-      buf[p + 2] = sb / window
-      const addI = Math.min(lineLen - 1, i + r + 1) * 3
-      const subI = Math.max(0, i - r) * 3
-      sr += line[addI] - line[subI]
-      sg += line[addI + 1] - line[subI + 1]
-      sb += line[addI + 2] - line[subI + 2]
-    }
-  }
-}
-
 /* ---------- Threshold sources for ordered / stochastic modes ---------- */
 
 type ThresholdFn = (x: number, y: number) => number
 
+const STOCHASTIC_FNS: Record<string, ThresholdFn> = {
+  random: whiteNoise,
+  'white-gauss': gaussNoise,
+  'value-noise': valueNoise,
+  'pattern-noise': patternNoise,
+  grain: grainNoise,
+  'dispersed-dot': dispersedDot,
+  'arithmetic-xor': xorPattern,
+}
+
 function makeThresholdFn(s: PipelineSettings): ThresholdFn {
   const def = getAlgorithm(s.algorithm)
   if (def.kind === 'ordered') {
+    if (def.pattern) {
+      const { size, data } = getPatternMatrix(def.pattern, s.screenAngle)
+      return (x, y) => data[(y % size) * size + (x % size)]
+    }
     const size = def.bayerSize ?? 4
     const m = getBayerMatrix(size)
     return (x, y) => m[(y % size) * size + (x % size)]
@@ -137,8 +105,55 @@ function makeThresholdFn(s: PipelineSettings): ThresholdFn {
     const n = BLUE_NOISE_SIZE
     return (x, y) => tex[(y % n) * n + (x % n)]
   }
-  if (s.algorithm === 'value-noise') return valueNoise
-  return whiteNoise
+  return STOCHASTIC_FNS[s.algorithm] ?? whiteNoise
+}
+
+/* ---------- Hooks for the advanced error-diffusion variants ----------
+   The stylized diffusion algorithms share the plain scanline loop and
+   differ only in a per-pixel error scale (how much error survives) or
+   an added threshold bias (a pattern folded into quantization).      */
+
+interface EdHooks {
+  /** Multiplies the diffused error at (x, y). */
+  errScale?: (x: number, y: number) => number
+  /** Added to the value being quantized at (x, y); already scaled to
+   *  channel units (one quantization step ≈ `step`). */
+  tBias?: (x: number, y: number) => number
+}
+
+function makeEdHooks(
+  s: PipelineSettings,
+  data: Uint8ClampedArray,
+  w: number,
+  h: number,
+  step: number,
+): EdHooks {
+  switch (s.algorithm) {
+    case 'modulated-x':
+      // Error strength waves along x → vertical banding texture.
+      return { errScale: (x) => 0.25 + 0.75 * (0.5 + 0.5 * Math.sin(x * 0.32)) }
+    case 'modulated-y':
+      return { errScale: (_x, y) => 0.25 + 0.75 * (0.5 + 0.5 * Math.sin(y * 0.32)) }
+    case 'hybrid': {
+      // Half-strength diffusion (kernel div is doubled) + a Bayer bias:
+      // ordered structure with diffusion tone accuracy.
+      const m = getBayerMatrix(4)
+      return { tBias: (x, y) => (m[(y % 4) * 4 + (x % 4)] - 0.5) * step }
+    }
+    case 'contour': {
+      // Blue-noise threshold modulation breaks up "worm" contours.
+      const tex = getBlueNoise()
+      const n = BLUE_NOISE_SIZE
+      return { tBias: (x, y) => (tex[(y % n) * n + (x % n)] - 0.5) * step * 0.7 }
+    }
+    case 'edge-aware': {
+      // Diffuse less error across strong edges so they stay crisp.
+      const mag = sobelEdges(data, w, h)
+      return { errScale: (x, y) => 1 - 0.85 * mag[y * w + x] }
+    }
+    default:
+      return {}
+  }
 }
 
 /* ---------- Mono / grayscale dithering ---------- */
@@ -166,9 +181,17 @@ function ditherMono(data: Uint8ClampedArray, w: number, h: number, s: PipelineSe
   const levelIdx = new Uint8Array(n)
   const def = getAlgorithm(s.algorithm)
 
+  const quantLevel = (v: number): number => {
+    let idx = Math.round((v / 255) * maxLevel)
+    if (idx < 0) idx = 0
+    else if (idx > maxLevel) idx = maxLevel
+    return idx
+  }
+
   if (def.kind === 'error-diffusion') {
     const kernel = DIFFUSION_KERNELS[s.algorithm]
     const { div, taps } = kernel
+    const hooks = makeEdHooks(s, data, w, h, step)
     for (let y = 0; y < h; y++) {
       const reverse = s.serpentine && (y & 1) === 1
       const xStart = reverse ? w - 1 : 0
@@ -177,11 +200,11 @@ function ditherMono(data: Uint8ClampedArray, w: number, h: number, s: PipelineSe
       for (let x = xStart; x !== xEnd; x += xStep) {
         const p = y * w + x
         const old = lum[p]
-        let idx = Math.round(((old + qBias) / 255) * maxLevel)
-        if (idx < 0) idx = 0
-        else if (idx > maxLevel) idx = maxLevel
+        const tb = hooks.tBias ? hooks.tBias(x, y) : 0
+        const idx = quantLevel(old + qBias + tb)
         levelIdx[p] = idx
-        const err = old - idx * step
+        const scale = hooks.errScale ? hooks.errScale(x, y) : 1
+        const err = (old - idx * step) * scale
         for (const [tdx, tdy, tw] of taps) {
           const nx = x + (reverse ? -tdx : tdx)
           const ny = y + tdy
@@ -190,6 +213,12 @@ function ditherMono(data: Uint8ClampedArray, w: number, h: number, s: PipelineSe
         }
       }
     }
+  } else if (def.kind === 'dot-diffusion') {
+    dotDiffuse([lum], w, h, (p) => {
+      const idx = quantLevel(lum[p] + qBias)
+      levelIdx[p] = idx
+      return [idx * step]
+    })
   } else {
     // Ordered / stochastic: perturb by one quantization step around the
     // threshold texture, then round to the nearest level.
@@ -268,6 +297,7 @@ function ditherRgbLevels(data: Uint8ClampedArray, w: number, h: number, s: Pipel
 
   if (def.kind === 'error-diffusion') {
     const { div, taps } = DIFFUSION_KERNELS[s.algorithm]
+    const hooks = makeEdHooks(s, data, w, h, qStep)
     for (let y = 0; y < h; y++) {
       const reverse = s.serpentine && (y & 1) === 1
       const xStart = reverse ? w - 1 : 0
@@ -276,11 +306,13 @@ function ditherRgbLevels(data: Uint8ClampedArray, w: number, h: number, s: Pipel
       for (let x = xStart; x !== xEnd; x += xStep) {
         const p = y * w + x
         const i = p * 4
+        const tb = hooks.tBias ? hooks.tBias(x, y) : 0
+        const scale = hooks.errScale ? hooks.errScale(x, y) : 1
         for (let c = 0; c < 3; c++) {
           const arr = chans[c]
           const old = arr[p]
-          const q = quant(old + bias)
-          const err = old - q
+          const q = quant(old + bias + tb)
+          const err = (old - q) * scale
           data[i + c] = q
           for (const [tdx, tdy, tw] of taps) {
             const nx = x + (reverse ? -tdx : tdx)
@@ -291,6 +323,17 @@ function ditherRgbLevels(data: Uint8ClampedArray, w: number, h: number, s: Pipel
         }
       }
     }
+  } else if (def.kind === 'dot-diffusion') {
+    dotDiffuse(chans, w, h, (p) => {
+      const i = p * 4
+      const q0 = quant(chans[0][p] + bias)
+      const q1 = quant(chans[1][p] + bias)
+      const q2 = quant(chans[2][p] + bias)
+      data[i] = q0
+      data[i + 1] = q1
+      data[i + 2] = q2
+      return [q0, q1, q2]
+    })
   } else {
     const tf = makeThresholdFn(s)
     for (let y = 0; y < h; y++) {
@@ -325,6 +368,9 @@ function ditherToImagePalette(
   const n = w * h
   const def = getAlgorithm(s.algorithm)
 
+  // One "step" for threshold-bias hooks ≈ per-channel level spacing.
+  const hookStep = 255 / Math.max(1, Math.round(Math.cbrt(palette.length)) - 1)
+
   if (def.kind === 'error-diffusion') {
     const fr = new Float32Array(n)
     const fg = new Float32Array(n)
@@ -335,6 +381,7 @@ function ditherToImagePalette(
       fb[p] = data[i + 2] - bias
     }
     const { div, taps } = DIFFUSION_KERNELS[s.algorithm]
+    const hooks = makeEdHooks(s, data, w, h, hookStep)
     for (let y = 0; y < h; y++) {
       const reverse = s.serpentine && (y & 1) === 1
       const xStart = reverse ? w - 1 : 0
@@ -345,10 +392,12 @@ function ditherToImagePalette(
         const or = fr[p]
         const og = fg[p]
         const ob = fb[p]
-        const c = palette[nearest(or, og, ob)]
-        const er = or - c[0]
-        const eg = og - c[1]
-        const eb = ob - c[2]
+        const tb = hooks.tBias ? hooks.tBias(x, y) : 0
+        const c = palette[nearest(or + tb, og + tb, ob + tb)]
+        const scale = hooks.errScale ? hooks.errScale(x, y) : 1
+        const er = (or - c[0]) * scale
+        const eg = (og - c[1]) * scale
+        const eb = (ob - c[2]) * scale
         const i = p * 4
         data[i] = c[0]
         data[i + 1] = c[1]
@@ -365,6 +414,23 @@ function ditherToImagePalette(
         }
       }
     }
+  } else if (def.kind === 'dot-diffusion') {
+    const fr = new Float32Array(n)
+    const fg = new Float32Array(n)
+    const fb = new Float32Array(n)
+    for (let p = 0, i = 0; p < n; p++, i += 4) {
+      fr[p] = data[i] - bias
+      fg[p] = data[i + 1] - bias
+      fb[p] = data[i + 2] - bias
+    }
+    dotDiffuse([fr, fg, fb], w, h, (p) => {
+      const c = palette[nearest(fr[p], fg[p], fb[p])]
+      const i = p * 4
+      data[i] = c[0]
+      data[i + 1] = c[1]
+      data[i + 2] = c[2]
+      return c
+    })
   } else {
     // Ordered / stochastic against a palette: perturb each channel by
     // roughly one per-channel quantization step, then snap to the

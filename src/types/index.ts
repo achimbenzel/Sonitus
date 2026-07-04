@@ -5,6 +5,7 @@
 export type AlgorithmId =
   // Error diffusion
   | 'floyd-steinberg'
+  | 'false-floyd-steinberg'
   | 'jjn'
   | 'stucki'
   | 'atkinson'
@@ -12,15 +13,41 @@ export type AlgorithmId =
   | 'sierra'
   | 'two-row-sierra'
   | 'sierra-lite'
-  // Ordered (Bayer)
+  | 'stevenson-arce'
+  | 'shiau-fan'
+  | 'shiau-fan-2'
+  | 'fan'
+  | 'simple-2d'
+  // Ordered (Bayer + patterns)
   | 'bayer-2'
   | 'bayer-4'
   | 'bayer-8'
   | 'bayer-16'
+  | 'clustered-dot'
+  | 'dispersed-dot'
+  | 'checker'
+  // Halftone screens
+  | 'halftone-dot'
+  | 'line-halftone'
+  | 'cross-halftone'
+  | 'ordered-halftone'
+  | 'screen-halftone'
+  | 'dot-matrix'
   // Stochastic
   | 'random'
   | 'blue-noise'
   | 'value-noise'
+  | 'white-gauss'
+  | 'pattern-noise'
+  | 'grain'
+  // Advanced / stylized
+  | 'modulated-x'
+  | 'modulated-y'
+  | 'dot-diffusion'
+  | 'arithmetic-xor'
+  | 'hybrid'
+  | 'edge-aware'
+  | 'contour'
 
 export type PaletteMode = 'mono' | 'image'
 
@@ -54,8 +81,30 @@ export interface DitherSettings {
   gamma: number
   /** Quantization bias, -100 .. 100. Positive = darker result. */
   threshold: number
-  /** Pre-blur radius in processed pixels, 0 .. 10. */
+  /** Pre-blur radius in processed pixels, 0 .. 10 (effect chain #1). */
   preBlur: number
+  /* ----- pre-dither effect chain (applied in this order, after the
+     tone LUT and the blur above, before dithering) ----- */
+  /** #2 Sharpen (unsharp mask), toggle + strength 0..100. */
+  fxSharpenOn: boolean
+  fxSharpen: number
+  /** #3 Edge boost (brightens Sobel edges), toggle + strength 0..100. */
+  fxEdgeOn: boolean
+  fxEdge: number
+  /** #4 Glow (screen-blended blurred copy), toggle + strength 0..100. */
+  fxGlowOn: boolean
+  fxGlow: number
+  /** #5 Noise (deterministic grain), toggle + strength 0..100. */
+  fxNoiseOn: boolean
+  fxNoise: number
+  /** #6 Posterize, toggle + levels 2..16. */
+  fxPosterizeOn: boolean
+  fxPosterize: number
+  /** #7 Contrast boost (S-curve), toggle + strength 0..100. */
+  fxContrastOn: boolean
+  fxContrast: number
+  /** Halftone screen angle in degrees (screen-halftone only), 0..90. */
+  screenAngle: number
   invert: boolean
   /** Serpentine scanning (error diffusion only). */
   serpentine: boolean
@@ -79,11 +128,13 @@ export interface DitherSettings {
   resolvedPalette?: string[]
   /** Output pixel scale multiplier (export size = resolution * scale). */
   pixelScale: number
+  /** Print resolution metadata for exports (PNG/JPEG/CMYK), 10..1200. */
+  dpi: number
 }
 
 /** The subset of settings the worker pipeline needs.
- *  `resolution` and `pixelScale` are applied outside the worker. */
-export type PipelineSettings = Omit<DitherSettings, 'resolution' | 'pixelScale'>
+ *  `resolution`, `pixelScale` and `dpi` are applied outside the worker. */
+export type PipelineSettings = Omit<DitherSettings, 'resolution' | 'pixelScale' | 'dpi'>
 
 export const DEFAULT_SETTINGS: DitherSettings = {
   algorithm: 'floyd-steinberg',
@@ -93,6 +144,19 @@ export const DEFAULT_SETTINGS: DitherSettings = {
   gamma: 1,
   threshold: 0,
   preBlur: 0,
+  fxSharpenOn: false,
+  fxSharpen: 50,
+  fxEdgeOn: false,
+  fxEdge: 50,
+  fxGlowOn: false,
+  fxGlow: 50,
+  fxNoiseOn: false,
+  fxNoise: 30,
+  fxPosterizeOn: false,
+  fxPosterize: 6,
+  fxContrastOn: false,
+  fxContrast: 50,
+  screenAngle: 45,
   invert: false,
   serpentine: true,
   greyLevels: 2,
@@ -104,6 +168,7 @@ export const DEFAULT_SETTINGS: DitherSettings = {
   paletteStyle: 'dominant',
   customPalette: ['#071318', '#1c3fae', '#46b3cc', '#4af17a', '#ffb02e', '#e8f4f8'],
   pixelScale: 4,
+  dpi: 96,
 }
 
 export type ProjectKind = 'none' | 'image' | 'sequence' | 'video'

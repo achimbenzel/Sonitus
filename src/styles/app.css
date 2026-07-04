@@ -251,6 +251,13 @@ input[type="number"]{-moz-appearance:textfield;appearance:textfield}
 .numfield-steppers button:hover{background:rgba(70,179,204,.18);color:var(--sky-blue)}
 .numfield-steppers button+button{border-top:1px solid var(--line)}
 
+/* pre-dither effects section */
+.fxnote{font-family:var(--font-mono);font-size:.54rem;font-weight:600;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--ink-dim);margin:-2px 0 2px;user-select:none}
+.control.fx-off input[type="range"]{opacity:.35}
+.control.fx-off .control-value--static{opacity:.5}
+.control-value--static{cursor:default}
+
 /* ============================================================
    TOGGLE SWITCH
    ============================================================ */
@@ -270,6 +277,12 @@ input[type="number"]{-moz-appearance:textfield;appearance:textfield}
 .toggle input:checked+.track::after{left:20px;
   background:radial-gradient(circle at 34% 30%,#fff 0 24%,transparent 25%),linear-gradient(180deg,#7fdcf4,#46b3cc)}
 .toggle input:focus-visible+.track{outline:3px solid var(--accent-bright);outline-offset:2px}
+
+/* compact toggle used inside effect rows (left of the label) */
+.toggle--mini{padding:0;flex:none;gap:0}
+.toggle--mini .track{width:28px;height:16px}
+.toggle--mini .track::after{width:10px;height:10px}
+.toggle--mini input:checked+.track::after{left:14px}
 
 /* ============================================================
    COLOR CONTROL — swatch well + hex readout, native picker hidden

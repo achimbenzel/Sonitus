@@ -140,6 +140,20 @@ export function parsePreset(json: string): ParsedPreset {
     gamma: num(obj, 'gamma', 0.2, 3, d.gamma),
     threshold: num(obj, 'threshold', -100, 100, d.threshold),
     preBlur: num(obj, 'preBlur', 0, 10, d.preBlur),
+    // Pre-dither effect chain (older presets fall back to "off").
+    fxSharpenOn: bool(obj, 'fxSharpenOn', d.fxSharpenOn),
+    fxSharpen: num(obj, 'fxSharpen', 0, 100, d.fxSharpen),
+    fxEdgeOn: bool(obj, 'fxEdgeOn', d.fxEdgeOn),
+    fxEdge: num(obj, 'fxEdge', 0, 100, d.fxEdge),
+    fxGlowOn: bool(obj, 'fxGlowOn', d.fxGlowOn),
+    fxGlow: num(obj, 'fxGlow', 0, 100, d.fxGlow),
+    fxNoiseOn: bool(obj, 'fxNoiseOn', d.fxNoiseOn),
+    fxNoise: num(obj, 'fxNoise', 0, 100, d.fxNoise),
+    fxPosterizeOn: bool(obj, 'fxPosterizeOn', d.fxPosterizeOn),
+    fxPosterize: Math.round(num(obj, 'fxPosterize', 2, 16, d.fxPosterize)),
+    fxContrastOn: bool(obj, 'fxContrastOn', d.fxContrastOn),
+    fxContrast: num(obj, 'fxContrast', 0, 100, d.fxContrast),
+    screenAngle: num(obj, 'screenAngle', 0, 90, d.screenAngle),
     invert: bool(obj, 'invert', d.invert),
     serpentine: bool(obj, 'serpentine', d.serpentine),
     greyLevels: Math.round(num(obj, 'greyLevels', 2, 16, d.greyLevels)),
@@ -151,6 +165,7 @@ export function parsePreset(json: string): ParsedPreset {
     darkColor: hex(obj, 'darkColor', d.darkColor),
     paletteSize: Math.round(num(obj, 'paletteSize', 2, 32, d.paletteSize)),
     pixelScale: Math.round(num(obj, 'pixelScale', 1, 16, d.pixelScale)),
+    dpi: Math.round(num(obj, 'dpi', 10, 1200, d.dpi)),
   }
   return {
     settings,

@@ -26,7 +26,8 @@ import {
   setKeyframeEasing,
 } from './keyframes/keyframes'
 import { generatePalette, rgbToHex } from './dither/palette'
-import { buildImageFrames, extractVideoFrames } from './utils/imageLoad'
+import { buildImageFrames, decodeAnimatedImage, extractVideoFrames } from './utils/imageLoad'
+import { exportPaletteFile, mergePalettes, parsePaletteFile } from './utils/palettes'
 import { exportCmykPlates, exportStill, exportSvg, type SequenceExportHandle } from './utils/export'
 import { exportGif, exportMp4, exportPngSequence } from './utils/videoExport'
 import { exportPreset, parsePreset } from './utils/presets'
@@ -38,7 +39,7 @@ import { Timeline } from './components/Timeline/Timeline'
 import { ProgressOverlay } from './components/ProgressOverlay/ProgressOverlay'
 import { SettingsModal } from './components/modals/SettingsModal'
 import { AboutModal } from './components/modals/AboutModal'
-import { PresetNameModal } from './components/modals/PresetNameModal'
+import { NameModal } from './components/modals/NameModal'
 import { ConfirmModal } from './components/modals/ConfirmModal'
 import type { KfControlProps } from './components/Sidebar/controls'
 
@@ -93,6 +94,9 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [aboutOpen, setAboutOpen] = useState(false)
   const [presetNameOpen, setPresetNameOpen] = useState(false)
+  const [paletteNameOpen, setPaletteNameOpen] = useState(false)
+  /** Parsed palette file waiting for the replace/merge decision. */
+  const [pendingPalette, setPendingPalette] = useState<{ name: string; colors: string[] } | null>(null)
   /** Pending destructive action awaiting the styled confirm dialog. */
   const [confirmAction, setConfirmAction] = useState<'new-file' | 'new-project' | 'close' | null>(null)
   const openInputRef = useRef<HTMLInputElement>(null)
@@ -518,14 +522,31 @@ export default function App() {
   const importImages = useCallback(
     async (files: File[]) => {
       const valid = files.filter(
-        (f) => /image\/(png|jpeg)/.test(f.type) || /\.(png|jpe?g)$/i.test(f.name),
+        (f) =>
+          /image\/(png|jpeg|webp|bmp|gif)/.test(f.type) ||
+          /\.(png|jpe?g|webp|bmp|gif)$/i.test(f.name),
       )
       if (valid.length === 0) {
-        showToast('No PNG/JPG files found in selection', true)
+        showToast('No supported image files found (PNG/JPG/WebP/BMP/GIF)', true)
         return
       }
       setProgress({ label: valid.length > 1 ? 'Importing sequence' : 'Importing image', value: 0 })
       try {
+        // A single GIF/WebP may be animated: decode all frames and run
+        // it on the timeline at the clip's own frame rate.
+        if (valid.length === 1 && /gif|webp/i.test(valid[0].type + valid[0].name)) {
+          const animated = await decodeAnimatedImage(valid[0], (v) =>
+            setProgress({ label: 'Decoding animation', value: v }),
+          )
+          if (animated) {
+            loadFrames(animated.frames, 'video')
+            changeFps(animated.fps)
+            if (!animated.fpsDetected) {
+              showToast(`Could not read the animation speed — using ${animated.fps} fps`, true)
+            }
+            return
+          }
+        }
         const newFrames = await buildImageFrames(valid, (v) =>
           setProgress({ label: valid.length > 1 ? 'Importing sequence' : 'Importing image', value: v }),
         )
@@ -536,7 +557,7 @@ export default function App() {
         setProgress(null)
       }
     },
-    [loadFrames, showToast],
+    [loadFrames, showToast, changeFps],
   )
 
   const importVideo = useCallback(
@@ -716,6 +737,47 @@ export default function App() {
     [replaceAll, showToast, changeFps],
   )
 
+  /* ---------- palette files ---------- */
+
+  /** Colors the palette file is written from: the custom palette when
+   *  editing one, otherwise the currently extracted image palette. */
+  const currentPaletteColors = useCallback((): string[] => {
+    const s = stateRef.current.settings
+    if (s.paletteStyle === 'custom') return s.customPalette
+    return imagePaletteRef.current ?? s.customPalette
+  }, [])
+
+  const savePalette = useCallback(
+    (name: string) => {
+      const s = stateRef.current.settings
+      exportPaletteFile(name, currentPaletteColors(), `${s.paletteMode}/${s.paletteStyle}`)
+    },
+    [currentPaletteColors],
+  )
+
+  const loadPalette = useCallback(
+    async (file: File) => {
+      try {
+        setPendingPalette(parsePaletteFile(await file.text()))
+      } catch (err) {
+        showToast(`Invalid palette: ${err instanceof Error ? err.message : 'unknown error'}`, true)
+      }
+    },
+    [showToast],
+  )
+
+  const applyPalette = useCallback(
+    (colors: string[]) => {
+      update({
+        paletteMode: 'image',
+        colorMapping: 'current',
+        paletteStyle: 'custom',
+        customPalette: colors.slice(0, 32),
+      })
+    },
+    [update],
+  )
+
   /* ---------- keyboard shortcuts ---------- */
 
   useEffect(() => {
@@ -817,6 +879,8 @@ export default function App() {
           kfControl={kfControl}
           onImportImages={importImages}
           onImportVideo={importVideo}
+          onSavePalette={() => setPaletteNameOpen(true)}
+          onLoadPalette={loadPalette}
           onExport={handleExport}
           projectKind={projectKind}
           frameCount={frames.length}
@@ -866,7 +930,53 @@ export default function App() {
       )}
       {aboutOpen && <AboutModal onClose={() => setAboutOpen(false)} />}
       {presetNameOpen && (
-        <PresetNameModal onSave={savePreset} onClose={() => setPresetNameOpen(false)} />
+        <NameModal
+          title="Save Preset"
+          note={
+            <>
+              Name your preset. It is saved as a <b>.sonitus</b> file (JSON inside) and the
+              name is stored in the file and used as the filename.
+            </>
+          }
+          ctaLabel="Save Preset"
+          placeholder="Dither Preset"
+          onSave={savePreset}
+          onClose={() => setPresetNameOpen(false)}
+        />
+      )}
+      {paletteNameOpen && (
+        <NameModal
+          title="Save Palette"
+          note={
+            <>
+              Name your palette. It is saved as a <b>.sonitus-palette</b> file (JSON inside)
+              containing the color list, and can be loaded back or merged later.
+            </>
+          }
+          ctaLabel="Save Palette"
+          placeholder="Sonitus Palette"
+          onSave={savePalette}
+          onClose={() => setPaletteNameOpen(false)}
+        />
+      )}
+      {pendingPalette && (
+        <ConfirmModal
+          title="Load Palette"
+          message={
+            <>
+              Load <b>{pendingPalette.name}</b> ({pendingPalette.colors.length} colors)?
+              <b> Replace</b> switches the custom palette to these colors;
+              <b> Merge</b> appends the new colors to the current palette (up to 32).
+            </>
+          }
+          confirmLabel="Replace"
+          onConfirm={() => applyPalette(pendingPalette.colors)}
+          secondaryLabel="Merge"
+          onSecondary={() =>
+            applyPalette(mergePalettes(currentPaletteColors(), pendingPalette.colors))
+          }
+          onClose={() => setPendingPalette(null)}
+        />
       )}
       {confirmAction === 'new-file' && (
         <ConfirmModal

@@ -1,13 +1,16 @@
-import { useRef } from 'react'
-import { Clapperboard, Download, FileArchive, Film, ImagePlus, Images, Layers, X } from 'lucide-react'
+import { useRef, useState } from 'react'
+import { Clapperboard, Download, FileArchive, Film, FolderOpen, ImagePlus, Images, Layers, Save, X } from 'lucide-react'
 import type { DitherSettings, ExportKind, KeyframableParam, ProjectKind } from '../../types'
 import { DEFAULT_SETTINGS } from '../../types'
 import { ALGORITHMS, isErrorDiffusion } from '../../dither/algorithms/index'
 import { MONO_PRESETS } from '../../dither/palette'
-import { Section, SelectRow, SliderRow, ToggleRow, type KfControlProps } from './controls'
+import { EffectRow, Section, SelectRow, SliderRow, ToggleRow, type KfControlProps } from './controls'
 import { ColorField } from '../ui/ColorField'
 import { KeyframeControl } from './controls'
+import { NumberField } from '../ui/NumberField'
 import { PaletteEditor } from './PaletteEditor'
+
+const DPI_PRESETS = [72, 96, 150, 200, 300, 600]
 
 interface SidebarProps {
   /** Evaluated (keyframe-aware) settings for display. */
@@ -19,8 +22,12 @@ interface SidebarProps {
   /** Keyframe UI state + actions per parameter. */
   kfControl: (param: KeyframableParam) => KfControlProps
   onImportImages: (files: File[]) => void
-  /** Import an MP4 — the frame rate is auto-detected from the video. */
+  /** Import an MP4/WebM — the frame rate is auto-detected. */
   onImportVideo: (file: File) => void
+  /** Save the current palette as a .sonitus-palette file. */
+  onSavePalette: () => void
+  /** Load a .sonitus-palette file (App asks replace/merge). */
+  onLoadPalette: (file: File) => void
   onExport: (kind: ExportKind) => void
   projectKind: ProjectKind
   frameCount: number
@@ -34,19 +41,14 @@ const KIND_LABEL: Record<ProjectKind, string> = {
   none: 'No source',
   image: 'Single image',
   sequence: 'Image sequence',
-  video: 'MP4 video',
+  video: 'Video / animation',
 }
 
-const GROUP_LABEL = {
-  'error-diffusion': 'Error Diffusion',
-  ordered: 'Ordered',
-  stochastic: 'Stochastic',
-} as const
-
+/* Dropdown sections come straight from the registry's group field. */
 const ALGORITHM_OPTIONS = ALGORITHMS.map((a) => ({
   value: a.id,
   label: a.label,
-  group: GROUP_LABEL[a.kind],
+  group: a.group,
 }))
 
 export function Sidebar({
@@ -56,6 +58,8 @@ export function Sidebar({
   kfControl,
   onImportImages,
   onImportVideo,
+  onSavePalette,
+  onLoadPalette,
   onExport,
   projectKind,
   frameCount,
@@ -66,6 +70,10 @@ export function Sidebar({
   const imageInput = useRef<HTMLInputElement>(null)
   const sequenceInput = useRef<HTMLInputElement>(null)
   const videoInput = useRef<HTMLInputElement>(null)
+  const paletteInput = useRef<HTMLInputElement>(null)
+  /** True while the user works with a non-preset DPI value. */
+  const [dpiCustomMode, setDpiCustomMode] = useState(false)
+  const dpiIsPreset = DPI_PRESETS.includes(settings.dpi)
 
   const errorDiffusion = isErrorDiffusion(settings.algorithm)
   const mono = settings.paletteMode === 'mono'
@@ -92,7 +100,7 @@ export function Sidebar({
             <Images size={14} /> Image Sequence
           </button>
           <button className="btn btn--sm" onClick={() => videoInput.current?.click()}>
-            <Film size={14} /> MP4 Video
+            <Film size={14} /> Video (MP4/WebM)
           </button>
         </div>
         <div className="import-meta">
@@ -114,7 +122,7 @@ export function Sidebar({
         <input
           ref={imageInput}
           type="file"
-          accept="image/png,image/jpeg,.png,.jpg,.jpeg"
+          accept="image/png,image/jpeg,image/webp,image/bmp,image/gif,.png,.jpg,.jpeg,.webp,.bmp,.gif"
           style={{ display: 'none' }}
           onChange={(e) => {
             const f = e.target.files?.[0]
@@ -126,7 +134,7 @@ export function Sidebar({
           ref={sequenceInput}
           type="file"
           multiple
-          accept="image/png,image/jpeg,.png,.jpg,.jpeg"
+          accept="image/png,image/jpeg,image/webp,image/bmp,.png,.jpg,.jpeg,.webp,.bmp"
           style={{ display: 'none' }}
           onChange={(e) => {
             const files = Array.from(e.target.files ?? [])
@@ -137,7 +145,7 @@ export function Sidebar({
         <input
           ref={videoInput}
           type="file"
-          accept="video/mp4,.mp4"
+          accept="video/mp4,video/webm,.mp4,.webm,.mov"
           style={{ display: 'none' }}
           onChange={(e) => {
             const f = e.target.files?.[0]
@@ -155,6 +163,17 @@ export function Sidebar({
           options={ALGORITHM_OPTIONS}
           onChange={(v) => update({ algorithm: v as DitherSettings['algorithm'] })}
         />
+        {settings.algorithm === 'screen-halftone' && (
+          <SliderRow
+            label="Screen angle"
+            value={settings.screenAngle}
+            min={0}
+            max={90}
+            resetValue={d.screenAngle}
+            unit="°"
+            onChange={(v) => update({ screenAngle: v })}
+          />
+        )}
         <SliderRow
           label="Resolution"
           value={settings.resolution}
@@ -223,8 +242,18 @@ export function Sidebar({
           kf={kfControl('threshold')}
           onChange={(v) => updateParam('threshold', v)}
         />
+        <ToggleRow
+          label="Invert"
+          checked={settings.invert}
+          onChange={(v) => update({ invert: v })}
+        />
+      </Section>
+
+      {/* ---------- EFFECTS (pre-dither chain) ---------- */}
+      <Section label="Effects">
+        <div className="fxnote">Applied top to bottom, before dithering</div>
         <SliderRow
-          label="Pre-blur"
+          label="Blur"
           value={settings.preBlur}
           min={0}
           max={10}
@@ -235,10 +264,66 @@ export function Sidebar({
           kf={kfControl('preBlur')}
           onChange={(v) => updateParam('preBlur', v)}
         />
-        <ToggleRow
-          label="Invert"
-          checked={settings.invert}
-          onChange={(v) => update({ invert: v })}
+        <EffectRow
+          label="Sharpen"
+          on={settings.fxSharpenOn}
+          value={settings.fxSharpen}
+          min={0}
+          max={100}
+          resetValue={d.fxSharpen}
+          onToggle={(on) => update({ fxSharpenOn: on })}
+          onChange={(v) => update({ fxSharpen: v })}
+        />
+        <EffectRow
+          label="Edge boost"
+          on={settings.fxEdgeOn}
+          value={settings.fxEdge}
+          min={0}
+          max={100}
+          resetValue={d.fxEdge}
+          onToggle={(on) => update({ fxEdgeOn: on })}
+          onChange={(v) => update({ fxEdge: v })}
+        />
+        <EffectRow
+          label="Glow"
+          on={settings.fxGlowOn}
+          value={settings.fxGlow}
+          min={0}
+          max={100}
+          resetValue={d.fxGlow}
+          onToggle={(on) => update({ fxGlowOn: on })}
+          onChange={(v) => update({ fxGlow: v })}
+        />
+        <EffectRow
+          label="Noise"
+          on={settings.fxNoiseOn}
+          value={settings.fxNoise}
+          min={0}
+          max={100}
+          resetValue={d.fxNoise}
+          onToggle={(on) => update({ fxNoiseOn: on })}
+          onChange={(v) => update({ fxNoise: v })}
+        />
+        <EffectRow
+          label="Posterize"
+          on={settings.fxPosterizeOn}
+          value={settings.fxPosterize}
+          min={2}
+          max={16}
+          unit=" levels"
+          resetValue={d.fxPosterize}
+          onToggle={(on) => update({ fxPosterizeOn: on })}
+          onChange={(v) => update({ fxPosterize: v })}
+        />
+        <EffectRow
+          label="Contrast boost"
+          on={settings.fxContrastOn}
+          value={settings.fxContrast}
+          min={0}
+          max={100}
+          resetValue={d.fxContrast}
+          onToggle={(on) => update({ fxContrastOn: on })}
+          onChange={(v) => update({ fxContrast: v })}
         />
       </Section>
 
@@ -330,6 +415,35 @@ export function Sidebar({
             onChange={(next) => update({ customPalette: next })}
           />
         )}
+        {paletteImage && (
+          <div className="export-btns" style={{ marginTop: 4 }}>
+            <button
+              className="btn btn--sm"
+              onClick={onSavePalette}
+              title="Save the current palette as a .sonitus-palette file"
+            >
+              <Save size={13} /> Save palette
+            </button>
+            <button
+              className="btn btn--sm"
+              onClick={() => paletteInput.current?.click()}
+              title="Load a .sonitus-palette file (replace or merge)"
+            >
+              <FolderOpen size={13} /> Load palette
+            </button>
+            <input
+              ref={paletteInput}
+              type="file"
+              accept=".sonitus-palette,.json,application/json"
+              style={{ display: 'none' }}
+              onChange={(e) => {
+                const f = e.target.files?.[0]
+                if (f) onLoadPalette(f)
+                e.target.value = ''
+              }}
+            />
+          </div>
+        )}
       </Section>
 
       {/* ---------- EXPORT ---------- */}
@@ -343,12 +457,50 @@ export function Sidebar({
           unit="×"
           onChange={(v) => update({ pixelScale: v })}
         />
+        <SelectRow
+          label="Print DPI"
+          value={dpiIsPreset && !dpiCustomMode ? String(settings.dpi) : 'custom'}
+          options={[
+            ...DPI_PRESETS.map((v) => ({ value: String(v), label: `${v} DPI` })),
+            { value: 'custom', label: 'Custom…' },
+          ]}
+          onChange={(v) => {
+            if (v === 'custom') {
+              setDpiCustomMode(true)
+            } else {
+              setDpiCustomMode(false)
+              update({ dpi: Number(v) })
+            }
+          }}
+        />
+        {(dpiCustomMode || !dpiIsPreset) && (
+          <div className="inline-field">
+            <span className="control-label">Custom DPI</span>
+            <NumberField
+              value={settings.dpi}
+              min={10}
+              max={1200}
+              onChange={(v) => update({ dpi: v })}
+              ariaLabel="Custom DPI"
+            />
+          </div>
+        )}
         <div className="import-meta" style={{ marginTop: 0 }}>
           Output size: <b>
             {frameSize
               ? `${effRes * settings.pixelScale}×${(procHeight ?? 0) * settings.pixelScale}px`
               : '—'}
           </b>
+          {frameSize && (
+            <>
+              <br />
+              Print size: <b>
+                {`${((effRes * settings.pixelScale) / settings.dpi).toFixed(2)}×${(((procHeight ?? 0) * settings.pixelScale) / settings.dpi).toFixed(2)}in`}
+              </b>{' '}
+              ·{' '}
+              {`${(((effRes * settings.pixelScale) / settings.dpi) * 2.54).toFixed(1)}×${((((procHeight ?? 0) * settings.pixelScale) / settings.dpi) * 2.54).toFixed(1)}cm`}
+            </>
+          )}
         </div>
 
         <div className="export-btns">

@@ -64,6 +64,52 @@ export function valueNoise(x: number, y: number): number {
   return Math.min(0.999, Math.max(0, v))
 }
 
+/* ---------- Additional deterministic threshold patterns ---------- */
+
+/** Gaussian ("true white noise") threshold via Box–Muller: densities
+ *  cluster around mid-grey, giving softer, less salt-and-pepper grain
+ *  than the uniform random threshold. */
+export function gaussNoise(x: number, y: number): number {
+  const u1 = Math.max(1e-6, whiteNoise(x, y))
+  const u2 = whiteNoise(x + 40503, y + 20011)
+  const g = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2)
+  return Math.min(0.999, Math.max(0.001, 0.5 + g * 0.16))
+}
+
+/** Interference/moiré pattern: two crossed sine fields with mutual
+ *  phase modulation — a woven, fabric-like threshold texture. */
+export function patternNoise(x: number, y: number): number {
+  const v =
+    0.5 +
+    0.24 * Math.sin(x * 0.53 + 2.2 * Math.sin(y * 0.18)) +
+    0.24 * Math.sin(y * 0.61 + 2.0 * Math.sin(x * 0.15))
+  return Math.min(0.999, Math.max(0.001, v))
+}
+
+/** Film-grain threshold: clumpy low-frequency noise mixed with white
+ *  noise — coarser clumps than value noise, no smooth gradients. */
+export function grainNoise(x: number, y: number): number {
+  const v = valueNoiseAt(x * 1.7, y * 1.7) * 0.55 + whiteNoise(x, y) * 0.45
+  return Math.min(0.999, Math.max(0.001, v))
+}
+
+/** Dispersed-dot threshold via Interleaved Gradient Noise (Jimenez):
+ *  a highly uniform, non-tiling dispersed pattern — visibly different
+ *  from Bayer's rigid crosshatch. */
+export function dispersedDot(x: number, y: number): number {
+  const f = 0.06711056 * x + 0.00583715 * y
+  const v = 52.9829189 * (f - Math.floor(f))
+  return v - Math.floor(v)
+}
+
+/** Arithmetic (XOR) dither: the classic bitwise interference texture,
+ *  with a secondary arithmetic sub-order for smoother tone steps. */
+export function xorPattern(x: number, y: number): number {
+  const major = (x ^ y) & 15
+  const minor = (x * 5 + y * 11) & 15
+  return (major * 16 + minor + 0.5) / 256
+}
+
 /* ---------- Blue noise (void-and-cluster) ---------- */
 
 const BN_SIZE = 64

@@ -60,10 +60,15 @@ src/
 ├── keyframes/keyframes.ts      keyframe storage, interpolation, navigation
 ├── dither/
 │   ├── algorithms/
-│   │   ├── kernels.ts          error-diffusion kernels (FS, JJN, Stucki, …)
+│   │   ├── kernels.ts          error-diffusion kernels (FS…Stevenson–Arce)
 │   │   ├── bayer.ts            recursive Bayer matrices (2/4/8/16)
-│   │   ├── noise.ts            white noise, value noise, generated blue noise
+│   │   ├── patterns.ts         generated halftone/pattern matrices
+│   │   │                       (rank-normalized dot/line/cross/angle screens)
+│   │   ├── dotDiffusion.ts     Knuth class-order dot diffusion driver
+│   │   ├── noise.ts            white/gauss/value/pattern/grain noise,
+│   │   │                       generated blue noise, IGN dispersed dot
 │   │   └── index.ts            algorithm registry (UI + pipeline read this)
+│   ├── effects.ts              pre-dither effect chain (worker-safe)
 │   ├── palette.ts              hex utils, mono ramps, median-cut quantization
 │   └── pipeline.ts             pure processing pipeline (DOM-free, testable)
 ├── workers/
@@ -84,11 +89,13 @@ src/
 │                               (app-styled picker popover), Modal, IconButton,
 │                               AppLogo (CSS-mask logo) primitives
 ├── utils/
-│   ├── imageLoad.ts            image/sequence import, MP4 frame extraction
+│   ├── imageLoad.ts            image/sequence import, animated GIF/WebP
+│   │                           decode, MP4/WebM extraction + fps detection
 │   ├── export.ts               PNG/JPEG/SVG stills, zipped PNG sequences,
 │   │                           CMYK screenprint plates
 │   ├── videoExport.ts          MP4 (WebCodecs + mp4-muxer) and GIF (gifenc)
-│   ├── pngMeta.ts              tEXt metadata chunks for exported PNGs
+│   ├── pngMeta.ts              tEXt metadata + pHYs DPI chunks, JFIF density
+│   ├── palettes.ts             .sonitus-palette save/load/merge
 │   └── presets.ts              .sonitus preset export + validated import
 ├── hooks/useSettingsHistory.ts combined settings+keyframe undo/redo history
 └── styles/
@@ -131,19 +138,41 @@ The choice persists in localStorage; new themes are one registry entry in
 checkerboard under transparency, compare modes (dithered / original /
 draggable split with labels), hold **C** for original, drag & drop import.
 
-**Import** — single image (PNG/JPG/JPEG), multi-file image sequences (natural
-filename sort), MP4 via in-browser seek-extraction **at the video's own frame
-rate**: the exact rate is read from the MP4 container (`moov`/`stts` timing,
-23.976 → 24 etc.), with a playback measurement fallback for other formats,
-and the timeline FPS is set to match (capped at 600 frames, stored as
-compressed blobs). Progress overlay for large imports.
+**Import** — still images (PNG / JPG / WebP / BMP / static GIF), multi-file
+image sequences (natural filename sort), **animated GIF/WebP** (decoded per
+frame with the ImageDecoder API, timeline FPS taken from the frame delays)
+and **MP4 / WebM video** via in-browser seek-extraction **at the video's own
+frame rate**: the exact rate is read from the MP4/MOV container
+(`moov`/`stts` timing, 23.976 → 24 etc.), with a playback measurement
+fallback for WebM (capped at 600 frames, stored as compressed blobs).
+Progress overlay for large imports.
 
-**Dithering** — error diffusion (Floyd–Steinberg, JJN, Stucki, Atkinson,
-Burkes, Sierra, Two-Row Sierra, Sierra Lite) with serpentine toggle; ordered
-Bayer 2×2/4×4/8×8/16×16; stochastic (deterministic random threshold, generated
-void-and-cluster blue noise, value noise). Resolution slider (internal
-processing width), brightness / contrast / gamma / threshold / pre-blur /
-invert, 2–16 grey levels, output pixel scale 1–16×.
+**Dithering — 40 algorithms**, grouped in the dropdown:
+*Error diffusion*: Floyd–Steinberg, False Floyd–Steinberg, JJN, Stucki,
+Atkinson, Burkes, Sierra, Two-Row Sierra, Sierra Lite, Fan, Shiau–Fan,
+Shiau–Fan 2, Stevenson–Arce, Simple 2D — all with the serpentine toggle.
+*Ordered*: Bayer 2×2–16×16, Clustered Dot, Dispersed Dot (interleaved
+gradient noise), Checker Threshold.
+*Halftone & pattern*: round-dot Halftone, Line, Cross, Ordered (diamond),
+**Screen Angle Halftone** (rotated print screen with its own angle slider,
+shown only when selected) and Dot Matrix (LED look).
+*Noise*: Random, White Noise (Gaussian), generated void-and-cluster Blue
+Noise, Value Noise, Pattern Noise (interference), Grain.
+*Advanced*: Modulated Diffusion X/Y, **Dot Diffusion** (Knuth class-order),
+Arithmetic (XOR), Hybrid (Bayer bias + half-strength diffusion), Edge-Aware
+(diffusion damped across Sobel edges), Contour (blue-noise threshold
+modulation). Ordered patterns are rank-normalized generated matrices, so
+tones stay even; every algorithm runs in mono, image-palette and legacy RGB
+modes and in every export. Resolution slider, tone controls, 2–16 grey
+levels, output pixel scale 1–16×.
+
+**Pre-dither effects** — a fixed-order chain applied inside the worker
+after the tone LUT and before dithering (top to bottom in the sidebar):
+Blur (the keyframable pre-blur) → Sharpen (unsharp mask) → Edge Boost
+(Sobel) → Glow (screen-blended blurred copy) → Noise (deterministic grain)
+→ Posterize (2–16 levels) → Contrast Boost (S-curve). Each effect has an
+enable toggle + strength, they stack, are deterministic (cache/buffering
+safe) and apply to preview and every export. Stored in presets.
 
 **Color input** — unified control: swatch + validated HEX field (`#fff`,
 `#ff6600`, live swatch preview) with a compact preset chip row underneath.
@@ -163,7 +192,10 @@ Vibrant, Muted, High contrast, and **Custom** — a full palette editor
 (add/remove colors, HEX editing, reordering). Extracted palettes are computed
 **once** from the first frame and cached, so sequences and animations never
 flicker; the cache refreshes only when the source or the palette settings
-change.
+change. Palettes save and load as their own **`.sonitus-palette`** files
+(JSON: name, colors, mode, creation date) — works for generated and custom
+palettes, and loading offers **Replace** or **Merge** (deduplicated, up to
+32 colors) into the custom palette editor.
 
 **Color mapping** — two interpretation modes affecting every output
 (viewport, stills, sequences, MP4/GIF, CMYK): **Current (Palette)** — the
@@ -221,9 +253,21 @@ plates) is stamped with standard `tEXt` chunks (`Software: Sonitus`,
 small dependency-free chunk injector (`utils/pngMeta.ts`); files stay valid
 for common viewers and design tools.
 
-**Presets** — full parameter set (incl. FPS/loop, color mapping, palette
-style and custom palette) exports as a **`.sonitus`** file (plain JSON
-inside) with a user-chosen name (used for the filename); import accepts
+**DPI / print size** — a Print DPI setting (presets 72 / 96 / 150 / 200 /
+300 / 600 plus a free custom value, stored in presets) drives the export
+metadata: PNGs (stills, sequence frames, **CMYK plates**) get a `pHYs`
+density chunk, JPEGs get their JFIF density set, and SVGs are written with
+physical width/height in inches (the viewBox stays in pixels — SVG itself
+is resolution-independent). The Export section shows the output size in
+pixels **and** the resulting print size in inches/cm, so screenprint and
+prepress sizing is readable at a glance. Pixel dimensions never change
+with DPI — it is pure density metadata.
+
+**Presets** — full parameter set (incl. FPS/loop, algorithm +
+algorithm-specific options like the screen angle, DPI, effect chain state,
+color mapping, palette style and custom palette) exports as a
+**`.sonitus`** file (plain JSON inside) with a user-chosen name (used for
+the filename); import accepts
 `.sonitus` and legacy `.json` presets, is validated field-by-field with
 clear error messages and stays compatible with older presets — missing
 fields fall back to safe defaults, removed fields (e.g. the old resampling
@@ -272,9 +316,28 @@ while typing in inputs.
   the logo SVG) — accepted by macOS, but a designed multi-size `.icns` can
   replace `build/icon.icns` any time; Windows uses the provided multi-size
   `.ico` directly.
-- **PNG metadata uses `tEXt` chunks** (the PNG-native standard read by
-  exiftool, GIMP, ImageMagick etc.); full XMP metadata blocks are not
-  written. JPEG/SVG/MP4/GIF exports carry no metadata.
+- **PNG metadata uses `tEXt` + `pHYs` chunks** (the PNG-native standards
+  read by exiftool, GIMP, ImageMagick, Photoshop etc.); full XMP blocks are
+  not written. JPEG carries JFIF density (DPI); GIF/MP4 exports carry no
+  DPI (the formats have no meaningful print density).
+- **Screen Angle Halftone is a sampled approximation**: the rotated screen
+  is rank-normalized over a 64×64 tile, so angles whose screens are not
+  grid-periodic can show a faint tile seam at very low resolutions.
+- **Advanced dithers are stylized interpretations**: Hybrid, Contour,
+  Edge-Aware and the Modulated pair are built as principled modulations of
+  Floyd–Steinberg (threshold bias / error scaling), and White Noise is the
+  Gaussian variant (the uniform one already exists as Random Threshold);
+  Dot Diffusion follows Knuth's class matrix faithfully.
+- **Animated GIF/WebP import needs the ImageDecoder API** (Chrome 94+ and
+  Electron have it); without it a GIF loads as a single still frame. GIF
+  delays of 0 are treated as the conventional 10 fps.
+- **TIFF import is not supported** — browsers cannot decode TIFF natively
+  and a decoder library would outweigh its use here; convert to PNG first.
+  PNG/JPG/WebP/BMP/GIF decode natively.
+- **Effect chain order is fixed** (blur → sharpen → edge → glow → noise →
+  posterize → contrast); the chain runs in the worker at processing
+  resolution, so heavy stacks stay responsive but add a few ms per frame
+  to buffering.
 - **The screen eyedropper needs the EyeDropper API** (Chrome and Electron
   have it); in browsers without it the button simply isn't shown.
 - **MP4 extraction is seek-based**, not a demuxer — frames are sampled on a

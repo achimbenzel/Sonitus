@@ -101,14 +101,22 @@ export class ProcessingEngine {
   private scratch: OffscreenCanvas | null = null
 
   /** Deterministic hash of every processing-relevant setting.
-   *  pixelScale is excluded — it only affects the cheap display/export
-   *  upscale, not worker output. */
+   *  pixelScale and dpi are excluded — they only affect the cheap
+   *  display/export upscale and export metadata, not worker output. */
   settingsHash(s: DitherSettings): string {
     return [
       s.algorithm, s.resolution, s.brightness, s.contrast, s.gamma, s.threshold,
       s.preBlur, s.invert ? 1 : 0, s.serpentine ? 1 : 0, s.greyLevels,
       s.paletteMode, s.colorMapping, s.lightColor, s.darkColor, s.paletteSize,
       s.resolvedPalette?.join(',') ?? '',
+      s.screenAngle,
+      // Pre-dither effect chain (strength only matters while enabled).
+      s.fxSharpenOn ? s.fxSharpen : 'off',
+      s.fxEdgeOn ? s.fxEdge : 'off',
+      s.fxGlowOn ? s.fxGlow : 'off',
+      s.fxNoiseOn ? s.fxNoise : 'off',
+      s.fxPosterizeOn ? s.fxPosterize : 'off',
+      s.fxContrastOn ? s.fxContrast : 'off',
     ].join('|')
   }
 

@@ -207,6 +207,7 @@ export async function exportPngSequence(opts: AnimationExportOptions): Promise<v
     const blob = await canvas.convertToBlob({ type: 'image/png' })
     files[`frame_${String(i + 1).padStart(4, '0')}.png`] = stampPngBytes(
       new Uint8Array(await blob.arrayBuffer()),
+      settingsAt(0).dpi,
     )
     onProgress((i + 1) / totalFrames)
   }

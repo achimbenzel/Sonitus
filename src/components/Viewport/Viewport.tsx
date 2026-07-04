@@ -366,7 +366,7 @@ export function Viewport({
             <AppLogo size={56} className="vp-empty-logo" />
             <span className="vp-empty-title">Sonitus Dither Studio</span>
             <p>
-              Drop an image, image sequence or MP4 here
+              Drop an image, sequence, GIF or video (MP4/WebM) here
               <br />
               or use the import panel on the right
             </p>

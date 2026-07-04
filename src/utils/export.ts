@@ -7,7 +7,7 @@ import { zipSync } from 'fflate'
 import type { DitherSettings, RawImage, SourceFrame } from '../types'
 import { PRIORITY, ProcessingEngine } from '../engine/ProcessingEngine'
 import { hexToRgb } from '../dither/palette'
-import { stampPngBlob, stampPngBytes } from './pngMeta'
+import { stampJpegDpi, stampPngBlob, stampPngBytes } from './pngMeta'
 
 export function downloadBlob(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob)
@@ -50,11 +50,14 @@ export async function exportStill(
     ctx.fillStyle = settings.paletteMode === 'mono' ? settings.darkColor : '#000000'
     ctx.fillRect(0, 0, flat.width, flat.height)
     ctx.drawImage(canvas, 0, 0)
-    const blob = await flat.convertToBlob({ type: 'image/jpeg', quality: 0.95 })
+    const blob = await stampJpegDpi(
+      await flat.convertToBlob({ type: 'image/jpeg', quality: 0.95 }),
+      settings.dpi,
+    )
     downloadBlob(blob, `${baseName(frame)}_dithered.jpg`)
     return
   }
-  const blob = await stampPngBlob(await canvas.convertToBlob({ type: 'image/png' }))
+  const blob = await stampPngBlob(await canvas.convertToBlob({ type: 'image/png' }), settings.dpi)
   downloadBlob(blob, `${baseName(frame)}_dithered.png`)
 }
 
@@ -66,8 +69,10 @@ function toHex(r: number, g: number, b: number): string {
 
 /** Vectorize a processed frame. Horizontal runs of equal color merge
  *  into 1-unit-tall rect subpaths, grouped into one <path> per color —
- *  compact and fast to render with shape-rendering: crispEdges. */
-export function rawImageToSvg(img: RawImage, pixelScale: number): string {
+ *  compact and fast to render with shape-rendering: crispEdges.
+ *  With `dpi` given, width/height become physical inches (viewBox
+ *  stays in pixels) so design tools place the SVG at print size. */
+export function rawImageToSvg(img: RawImage, pixelScale: number, dpi?: number): string {
   const { data, width: w, height: h } = img
   const byColor = new Map<string, string[]>()
 
@@ -101,8 +106,15 @@ export function rawImageToSvg(img: RawImage, pixelScale: number): string {
   }
 
   const scale = Math.max(1, Math.round(pixelScale))
+  const outW = w * scale
+  const outH = h * scale
+  // SVG is resolution-independent; dpi only sets the document's
+  // physical size (px / dpi in inches) for print-oriented tools.
+  const sizeAttrs = dpi && dpi > 0
+    ? `width="${(outW / dpi).toFixed(4)}in" height="${(outH / dpi).toFixed(4)}in"`
+    : `width="${outW}" height="${outH}"`
   const parts: string[] = [
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w * scale}" height="${h * scale}" shape-rendering="crispEdges">`,
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" ${sizeAttrs} shape-rendering="crispEdges">`,
   ]
   for (const [key, ds] of byColor) {
     const [fill, opacity] = key.split('@')
@@ -119,7 +131,7 @@ export async function exportSvg(
   settings: DitherSettings,
 ): Promise<void> {
   const raw = await engine.getProcessedData(frame, settings)
-  const svg = rawImageToSvg(raw, settings.pixelScale)
+  const svg = rawImageToSvg(raw, settings.pixelScale, settings.dpi)
   downloadBlob(new Blob([svg], { type: 'image/svg+xml' }), `${baseName(frame)}_dithered.svg`)
 }
 
@@ -193,7 +205,7 @@ export async function exportCmykPlates(
   for (const key of ['C', 'M', 'Y', 'K'] as const) {
     plateCtx.putImageData(new ImageData(plates[key], width, height), 0, 0)
     const blob = await plateCanvas.convertToBlob({ type: 'image/png' })
-    files[`${base}_${key}.png`] = stampPngBytes(new Uint8Array(await blob.arrayBuffer()))
+    files[`${base}_${key}.png`] = stampPngBytes(new Uint8Array(await blob.arrayBuffer()), settings.dpi)
   }
   const zipped = zipSync(files, { level: 0 })
   downloadBlob(

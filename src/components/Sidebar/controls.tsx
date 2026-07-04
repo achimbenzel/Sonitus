@@ -183,6 +183,57 @@ export function SliderRow({
   )
 }
 
+/** One pre-dither effect: [enable toggle][label][value] + strength
+ *  slider (disabled while the effect is off). */
+export function EffectRow({ label, on, value, min, max, step = 1, unit, resetValue, onToggle, onChange }: {
+  label: string
+  on: boolean
+  value: number
+  min: number
+  max: number
+  step?: number
+  unit?: string
+  resetValue?: number
+  onToggle: (on: boolean) => void
+  onChange: (v: number) => void
+}) {
+  return (
+    <div className={`control${on ? '' : ' fx-off'}`}>
+      <div className="control-head">
+        <label className="toggle toggle--mini" title={`${on ? 'Disable' : 'Enable'} ${label}`}>
+          <input
+            type="checkbox"
+            checked={on}
+            aria-label={`Enable ${label}`}
+            onChange={(e) => onToggle(e.target.checked)}
+          />
+          <span className="track" />
+        </label>
+        <span className="control-label">{label}</span>
+        <span className="control-valuebox">
+          <span className="control-value control-value--static">
+            {value}
+            {unit && <span className="control-unit">{unit}</span>}
+          </span>
+        </span>
+      </div>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        disabled={!on}
+        onChange={(e) => onChange(Number(e.target.value))}
+        onDoubleClick={() => {
+          if (resetValue !== undefined) onChange(resetValue)
+        }}
+        title={resetValue !== undefined ? 'Double-click to reset' : undefined}
+      />
+    </div>
+  )
+}
+
 export function ToggleRow({ label, checked, disabled, onChange }: {
   label: string
   checked: boolean
