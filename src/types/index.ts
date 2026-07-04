@@ -81,10 +81,11 @@ export interface DitherSettings {
   gamma: number
   /** Quantization bias, -100 .. 100. Positive = darker result. */
   threshold: number
-  /** Pre-blur radius in processed pixels, 0 .. 10 (effect chain #1). */
-  preBlur: number
   /* ----- pre-dither effect chain (applied in this order, after the
-     tone LUT and the blur above, before dithering) ----- */
+     tone LUT, before dithering) ----- */
+  /** #1 Blur, toggle + radius in processed pixels 0..10 (keyframable). */
+  fxBlurOn: boolean
+  preBlur: number
   /** #2 Sharpen (unsharp mask), toggle + strength 0..100. */
   fxSharpenOn: boolean
   fxSharpen: number
@@ -100,9 +101,6 @@ export interface DitherSettings {
   /** #6 Posterize, toggle + levels 2..16. */
   fxPosterizeOn: boolean
   fxPosterize: number
-  /** #7 Contrast boost (S-curve), toggle + strength 0..100. */
-  fxContrastOn: boolean
-  fxContrast: number
   /** Halftone screen angle in degrees (screen-halftone only), 0..90. */
   screenAngle: number
   invert: boolean
@@ -143,6 +141,7 @@ export const DEFAULT_SETTINGS: DitherSettings = {
   contrast: 0,
   gamma: 1,
   threshold: 0,
+  fxBlurOn: false,
   preBlur: 0,
   fxSharpenOn: false,
   fxSharpen: 50,
@@ -154,8 +153,6 @@ export const DEFAULT_SETTINGS: DitherSettings = {
   fxNoise: 30,
   fxPosterizeOn: false,
   fxPosterize: 6,
-  fxContrastOn: false,
-  fxContrast: 50,
   screenAngle: 45,
   invert: false,
   serpentine: true,
@@ -167,7 +164,7 @@ export const DEFAULT_SETTINGS: DitherSettings = {
   paletteSize: 8,
   paletteStyle: 'dominant',
   customPalette: ['#071318', '#1c3fae', '#46b3cc', '#4af17a', '#ffb02e', '#e8f4f8'],
-  pixelScale: 4,
+  pixelScale: 1,
   dpi: 96,
 }
 

@@ -252,8 +252,9 @@ export function Sidebar({
       {/* ---------- EFFECTS (pre-dither chain) ---------- */}
       <Section label="Effects">
         <div className="fxnote">Applied top to bottom, before dithering</div>
-        <SliderRow
+        <EffectRow
           label="Blur"
+          on={settings.fxBlurOn}
           value={settings.preBlur}
           min={0}
           max={10}
@@ -262,6 +263,7 @@ export function Sidebar({
           unit="px"
           resetValue={d.preBlur}
           kf={kfControl('preBlur')}
+          onToggle={(on) => update({ fxBlurOn: on })}
           onChange={(v) => updateParam('preBlur', v)}
         />
         <EffectRow
@@ -314,16 +316,6 @@ export function Sidebar({
           resetValue={d.fxPosterize}
           onToggle={(on) => update({ fxPosterizeOn: on })}
           onChange={(v) => update({ fxPosterize: v })}
-        />
-        <EffectRow
-          label="Contrast boost"
-          on={settings.fxContrastOn}
-          value={settings.fxContrast}
-          min={0}
-          max={100}
-          resetValue={d.fxContrast}
-          onToggle={(on) => update({ fxContrastOn: on })}
-          onChange={(v) => update({ fxContrast: v })}
         />
       </Section>
 

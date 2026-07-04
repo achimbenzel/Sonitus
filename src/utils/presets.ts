@@ -141,6 +141,10 @@ export function parsePreset(json: string): ParsedPreset {
     threshold: num(obj, 'threshold', -100, 100, d.threshold),
     preBlur: num(obj, 'preBlur', 0, 10, d.preBlur),
     // Pre-dither effect chain (older presets fall back to "off").
+    // Presets from before the Blur toggle keep blurring when they
+    // carried a non-zero radius. (`fxContrastOn`/`fxContrast` from
+    // removed Contrast Boost are ignored.)
+    fxBlurOn: bool(obj, 'fxBlurOn', num(obj, 'preBlur', 0, 10, d.preBlur) > 0),
     fxSharpenOn: bool(obj, 'fxSharpenOn', d.fxSharpenOn),
     fxSharpen: num(obj, 'fxSharpen', 0, 100, d.fxSharpen),
     fxEdgeOn: bool(obj, 'fxEdgeOn', d.fxEdgeOn),
@@ -151,8 +155,6 @@ export function parsePreset(json: string): ParsedPreset {
     fxNoise: num(obj, 'fxNoise', 0, 100, d.fxNoise),
     fxPosterizeOn: bool(obj, 'fxPosterizeOn', d.fxPosterizeOn),
     fxPosterize: Math.round(num(obj, 'fxPosterize', 2, 16, d.fxPosterize)),
-    fxContrastOn: bool(obj, 'fxContrastOn', d.fxContrastOn),
-    fxContrast: num(obj, 'fxContrast', 0, 100, d.fxContrast),
     screenAngle: num(obj, 'screenAngle', 0, 90, d.screenAngle),
     invert: bool(obj, 'invert', d.invert),
     serpentine: bool(obj, 'serpentine', d.serpentine),

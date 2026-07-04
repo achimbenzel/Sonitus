@@ -4,7 +4,7 @@
    and can be saved back out or reset. */
 
 import { useRef, useState } from 'react'
-import { Check, FileDown, FileUp, Trash2 } from 'lucide-react'
+import { Check, Eraser, FileDown, FileUp, Trash2 } from 'lucide-react'
 import { Modal } from '../ui/Modal'
 import {
   UI_STYLES,
@@ -17,13 +17,18 @@ import { downloadBlob } from '../../utils/export'
 interface SettingsModalProps {
   uiStyle: string
   onSelectStyle: (id: string) => void
+  /** Current playback-cache usage (processed frames held in memory). */
+  cacheStats: () => { entries: number; bytes: number }
+  /** Drop all cached frames (they are re-processed on demand). */
+  onClearCache: () => void
   onClose: () => void
 }
 
-export function SettingsModal({ uiStyle, onSelectStyle, onClose }: SettingsModalProps) {
+export function SettingsModal({ uiStyle, onSelectStyle, cacheStats, onClearCache, onClose }: SettingsModalProps) {
   const cssInputRef = useRef<HTMLInputElement>(null)
   const [customCss, setCustomCss] = useState(loadCustomCss)
   const [cssError, setCssError] = useState<string | null>(null)
+  const [cache, setCache] = useState(cacheStats)
 
   const loadCssFile = async (file: File) => {
     setCssError(null)
@@ -115,6 +120,31 @@ export function SettingsModal({ uiStyle, onSelectStyle, onClose }: SettingsModal
           />
         </div>
       )}
+
+      <h4 className="modal-subhead">Playback cache</h4>
+      <p className="modal-note">
+        Processed frames are cached in memory so scrubbing and video playback stay
+        smooth. The cache is limited, cleans itself up automatically and is emptied
+        whenever new media is loaded — clearing it only means frames are re-processed
+        on demand.
+      </p>
+      <div className="customcss-actions">
+        <button
+          className="btn btn--sm"
+          disabled={cache.entries === 0}
+          onClick={() => {
+            onClearCache()
+            setCache(cacheStats())
+          }}
+        >
+          <Eraser size={13} /> Clear cache
+        </button>
+        <span className="modal-note cache-size">
+          {cache.entries === 0
+            ? 'Cache is empty.'
+            : `${cache.entries} ${cache.entries === 1 ? 'frame' : 'frames'} · ${(cache.bytes / (1024 * 1024)).toFixed(1)} MB`}
+        </span>
+      </div>
     </Modal>
   )
 }

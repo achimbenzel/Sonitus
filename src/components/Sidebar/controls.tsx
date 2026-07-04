@@ -185,7 +185,7 @@ export function SliderRow({
 
 /** One pre-dither effect: [enable toggle][label][value] + strength
  *  slider (disabled while the effect is off). */
-export function EffectRow({ label, on, value, min, max, step = 1, unit, resetValue, onToggle, onChange }: {
+export function EffectRow({ label, on, value, min, max, step = 1, unit, decimals = 0, resetValue, kf, onToggle, onChange }: {
   label: string
   on: boolean
   value: number
@@ -193,7 +193,10 @@ export function EffectRow({ label, on, value, min, max, step = 1, unit, resetVal
   max: number
   step?: number
   unit?: string
+  decimals?: number
   resetValue?: number
+  /** Optional keyframe control (e.g. the keyframable Blur radius). */
+  kf?: KfControlProps
   onToggle: (on: boolean) => void
   onChange: (v: number) => void
 }) {
@@ -209,10 +212,11 @@ export function EffectRow({ label, on, value, min, max, step = 1, unit, resetVal
           />
           <span className="track" />
         </label>
+        {kf && <KeyframeControl {...kf} />}
         <span className="control-label">{label}</span>
         <span className="control-valuebox">
           <span className="control-value control-value--static">
-            {value}
+            {value.toFixed(decimals)}
             {unit && <span className="control-unit">{unit}</span>}
           </span>
         </span>

@@ -5,13 +5,12 @@
    keeps the playback buffer cache valid.
 
    Fixed order (matches the sidebar top-to-bottom):
-     1. Blur        (preBlur — the long-standing pre-blur)
+     1. Blur        (toggle + preBlur radius, keyframable)
      2. Sharpen     (unsharp mask)
      3. Edge boost  (adds Sobel edge energy)
      4. Glow        (screen-blends a blurred copy)
      5. Noise       (deterministic grain)
      6. Posterize   (per-channel level quantization)
-     7. Contrast boost (smoothstep S-curve)
    ============================================================ */
 
 import type { PipelineSettings } from '../types'
@@ -114,9 +113,9 @@ export { sobelEdges }
 
 /** Runs the enabled pre-dither effects in chain order, in place. */
 export function applyEffects(data: Uint8ClampedArray, w: number, h: number, s: PipelineSettings): void {
-  // 1. Blur
+  // 1. Blur — only when its toggle is enabled
   const blurRadius = Math.round(s.preBlur)
-  if (blurRadius > 0) boxBlurRgb(data, w, h, blurRadius)
+  if (s.fxBlurOn && blurRadius > 0) boxBlurRgb(data, w, h, blurRadius)
 
   // 2. Sharpen — unsharp mask: src + k · (src − blur(src))
   if (s.fxSharpenOn && s.fxSharpen > 0) {
@@ -174,22 +173,6 @@ export function applyEffects(data: Uint8ClampedArray, w: number, h: number, s: P
       data[i] = Math.round(data[i] / step) * step
       data[i + 1] = Math.round(data[i + 1] / step) * step
       data[i + 2] = Math.round(data[i + 2] / step) * step
-    }
-  }
-
-  // 7. Contrast boost — smoothstep S-curve, mixed by strength
-  if (s.fxContrastOn && s.fxContrast > 0) {
-    const m = s.fxContrast / 100
-    const lut = new Uint8ClampedArray(256)
-    for (let v = 0; v < 256; v++) {
-      const t = v / 255
-      const st = t * t * (3 - 2 * t)
-      lut[v] = 255 * (t * (1 - m) + st * m)
-    }
-    for (let i = 0; i < data.length; i += 4) {
-      data[i] = lut[data[i]]
-      data[i + 1] = lut[data[i + 1]]
-      data[i + 2] = lut[data[i + 2]]
     }
   }
 }

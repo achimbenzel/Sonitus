@@ -654,7 +654,8 @@ button.color-swatch{padding:0}
    style cards above */
 .customcss{margin-top:22px;padding-top:18px;border-top:1px solid var(--line)}
 .customcss .modal-subhead{margin-top:0}
-.customcss-actions{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 6px}
+.customcss-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0 6px}
+.cache-size{margin:0;align-self:center}
 .customcss-status{color:var(--ink-dim)}
 .customcss-error{color:#f5a0a0}
 

@@ -8,7 +8,7 @@ import { useRef } from 'react'
 import {
   FilePlus2,
   FolderOpen,
-  FolderPlus,
+  Frame,
   Info,
   Redo2,
   Save,
@@ -24,8 +24,10 @@ interface TopBarProps {
   canRedo: boolean
   onUndo: () => void
   onRedo: () => void
+  /** Full reset: media, settings, keyframes, timeline, caches. */
   onNewFile: () => void
-  onNewProject: () => void
+  /** Clear only the loaded media/canvas; settings stay. */
+  onNewCanvas: () => void
   onOpen: () => void
   onSavePreset: () => void
   onLoadPreset: (file: File) => void
@@ -39,7 +41,7 @@ export function TopBar({
   onUndo,
   onRedo,
   onNewFile,
-  onNewProject,
+  onNewCanvas,
   onOpen,
   onSavePreset,
   onLoadPreset,
@@ -56,11 +58,14 @@ export function TopBar({
       </div>
 
       <div className="topbar-group" role="toolbar" aria-label="File">
-        <IconButton label="New file — clear the canvas" onClick={onNewFile}>
+        <IconButton
+          label="New file — reset everything (media, settings, keyframes, timeline)"
+          onClick={onNewFile}
+        >
           <FilePlus2 size={15} />
         </IconButton>
-        <IconButton label="New project — clear canvas and reset all settings" onClick={onNewProject}>
-          <FolderPlus size={15} />
+        <IconButton label="New canvas — clear the loaded media, keep all settings" onClick={onNewCanvas}>
+          <Frame size={15} />
         </IconButton>
         <IconButton label="Open / import…" onClick={onOpen}>
           <FolderOpen size={15} />

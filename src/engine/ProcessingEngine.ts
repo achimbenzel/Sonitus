@@ -87,6 +87,10 @@ class BitmapCache {
     this.map.clear()
     this.bytes = 0
   }
+
+  stats(): { entries: number; bytes: number } {
+    return { entries: this.map.size, bytes: this.bytes }
+  }
 }
 
 /* ---------- Engine ---------- */
@@ -106,17 +110,17 @@ export class ProcessingEngine {
   settingsHash(s: DitherSettings): string {
     return [
       s.algorithm, s.resolution, s.brightness, s.contrast, s.gamma, s.threshold,
-      s.preBlur, s.invert ? 1 : 0, s.serpentine ? 1 : 0, s.greyLevels,
+      s.invert ? 1 : 0, s.serpentine ? 1 : 0, s.greyLevels,
       s.paletteMode, s.colorMapping, s.lightColor, s.darkColor, s.paletteSize,
       s.resolvedPalette?.join(',') ?? '',
       s.screenAngle,
       // Pre-dither effect chain (strength only matters while enabled).
+      s.fxBlurOn ? s.preBlur : 'off',
       s.fxSharpenOn ? s.fxSharpen : 'off',
       s.fxEdgeOn ? s.fxEdge : 'off',
       s.fxGlowOn ? s.fxGlow : 'off',
       s.fxNoiseOn ? s.fxNoise : 'off',
       s.fxPosterizeOn ? s.fxPosterize : 'off',
-      s.fxContrastOn ? s.fxContrast : 'off',
     ].join('|')
   }
 
@@ -219,6 +223,11 @@ export class ProcessingEngine {
    *  or keyframes). */
   invalidatePending(currentTag: string): void {
     this.pool.cancelQueued((tag, priority) => priority === PRIORITY.BUFFER && tag !== currentTag)
+  }
+
+  /** Current size of the processed-frame cache (for the Settings UI). */
+  cacheStats(): { entries: number; bytes: number } {
+    return this.processed.stats()
   }
 
   /** Reset for a new project. */

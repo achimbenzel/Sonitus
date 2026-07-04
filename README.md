@@ -164,15 +164,17 @@ Arithmetic (XOR), Hybrid (Bayer bias + half-strength diffusion), Edge-Aware
 modulation). Ordered patterns are rank-normalized generated matrices, so
 tones stay even; every algorithm runs in mono, image-palette and legacy RGB
 modes and in every export. Resolution slider, tone controls, 2–16 grey
-levels, output pixel scale 1–16×.
+levels, output pixel scale 1–16× (default 1×).
 
 **Pre-dither effects** — a fixed-order chain applied inside the worker
 after the tone LUT and before dithering (top to bottom in the sidebar):
-Blur (the keyframable pre-blur) → Sharpen (unsharp mask) → Edge Boost
-(Sobel) → Glow (screen-blended blurred copy) → Noise (deterministic grain)
-→ Posterize (2–16 levels) → Contrast Boost (S-curve). Each effect has an
-enable toggle + strength, they stack, are deterministic (cache/buffering
-safe) and apply to preview and every export. Stored in presets.
+Blur (keyframable radius) → Sharpen (unsharp mask) → Edge Boost (Sobel) →
+Glow (screen-blended blurred copy) → Noise (deterministic grain) →
+Posterize (2–16 levels). Every effect — including Blur — has an enable
+toggle + strength, they stack, are deterministic (cache/buffering safe)
+and apply to preview and every export. Stored in presets; presets from
+before the Blur toggle keep blurring when they carried a radius, and the
+removed Contrast Boost fields in old presets are ignored safely.
 
 **Color input** — unified control: swatch + validated HEX field (`#fff`,
 `#ff6600`, live swatch preview) with a compact preset chip row underneath.
@@ -273,10 +275,24 @@ clear error messages and stays compatible with older presets — missing
 fields fall back to safe defaults, removed fields (e.g. the old resampling
 options) are ignored, and the derived image palette is never persisted.
 
-**Destructive-action guard** — New File, New Project and closing the window
-with unsaved work all go through an app-styled confirmation dialog (no
-native `confirm()` popups) that reminds you to save a preset or export
-first; the Electron window close is intercepted the same way.
+**Header actions** — **New File** resets everything to the clean default
+state (media, all parameters, keyframes, timeline, processed-frame caches);
+**New Canvas** clears only the loaded media so new footage can be loaded
+with the same settings. Both — and closing the window with unsaved work —
+go through an app-styled confirmation dialog (no native `confirm()`
+popups) that reminds you to save a preset or export first; the Electron
+window close is intercepted the same way.
+
+**Playback & cache** — processed frames live in a byte-budgeted in-memory
+LRU (256 MB). Playback never stops on its own: if the next frame is not
+buffered yet, the playhead stalls with a subtle "buffering" dot, the frame
+is re-requested at top priority (so cancelled or silently failed buffer
+work can never freeze the timeline), and the ahead-buffer is topped up as
+frames complete. Only pause, reaching the end without loop, or a frame
+that repeatedly fails (reported with a clear message) stop playback.
+Settings → *Playback cache* shows the current cache size and a **Clear
+cache** button; the cache also empties automatically on New File, New
+Canvas and every media import.
 
 **Undo/redo** — one combined history for parameters **and** keyframes:
 adding/removing/moving a keyframe, value saves and easing changes all undo
@@ -335,9 +351,15 @@ while typing in inputs.
   and a decoder library would outweigh its use here; convert to PNG first.
   PNG/JPG/WebP/BMP/GIF decode natively.
 - **Effect chain order is fixed** (blur → sharpen → edge → glow → noise →
-  posterize → contrast); the chain runs in the worker at processing
-  resolution, so heavy stacks stay responsive but add a few ms per frame
-  to buffering.
+  posterize); the chain runs in the worker at processing resolution, so
+  heavy stacks stay responsive but add a few ms per frame to buffering.
+- **Very long videos don't fit the 256 MB frame cache in full** at high
+  processing resolutions — playback still works (frames re-process on the
+  fly with a brief buffering stall on the first loop), but fully instant
+  looping needs the timeline to fit the budget: lower the resolution or
+  shorten the clip. The cache is in-memory in both browser and Electron —
+  no cache folder is written to disk, so there is nothing to clean up on
+  disk and the browser build needs no filesystem access.
 - **The screen eyedropper needs the EyeDropper API** (Chrome and Electron
   have it); in browsers without it the button simply isn't shown.
 - **MP4 extraction is seek-based**, not a demuxer — frames are sampled on a

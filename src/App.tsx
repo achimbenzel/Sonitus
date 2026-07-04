@@ -98,7 +98,7 @@ export default function App() {
   /** Parsed palette file waiting for the replace/merge decision. */
   const [pendingPalette, setPendingPalette] = useState<{ name: string; colors: string[] } | null>(null)
   /** Pending destructive action awaiting the styled confirm dialog. */
-  const [confirmAction, setConfirmAction] = useState<'new-file' | 'new-project' | 'close' | null>(null)
+  const [confirmAction, setConfirmAction] = useState<'new-file' | 'new-canvas' | 'close' | null>(null)
   const openInputRef = useRef<HTMLInputElement>(null)
 
   /* ---------- timeline geometry ---------- */
@@ -441,7 +441,11 @@ export default function App() {
         engine.getProcessed(f, s, PRIORITY.BUFFER, generation).catch(() => {})
       }
     }
-  }, [engine, frames, sourceFrameAt, current, generation, settings, keyframes, playing, fps, loop, totalFrames])
+    // bufferTick keeps this effect re-running as frames complete: even
+    // while the playhead is stalled (current frozen), the ahead-window
+    // is re-checked and any request that was cancelled or failed is
+    // simply issued again — the buffer can never silently starve.
+  }, [engine, frames, sourceFrameAt, current, generation, settings, keyframes, playing, fps, loop, totalFrames, bufferTick])
 
   /* ---------- playback loop ---------- */
 
@@ -450,6 +454,12 @@ export default function App() {
     let raf = 0
     let last = performance.now()
     let acc = 0
+    // Stall recovery: if the frame we are waiting for was never
+    // processed (its buffer request may have been cancelled or failed
+    // silently), re-request it directly at preview priority. Only a
+    // frame that keeps *failing* — not merely slow — stops playback,
+    // and then with a visible error.
+    const stall = { pos: -1, requested: false, fails: 0 }
     const step = (now: number) => {
       raf = requestAnimationFrame(step)
       acc += now - last
@@ -479,6 +489,8 @@ export default function App() {
         engine.isCached(nextFrame, engine.settingsHash(settingsAt(contentIdx)))
       if (ready) {
         setBuffering(false)
+        stall.pos = -1
+        stall.fails = 0
         acc = Math.min(acc - frameDur, frameDur) // don't spiral after a stall
         setCurrent(nextPos)
         if (stopAfter) setPlaying(false)
@@ -486,6 +498,30 @@ export default function App() {
         // Stall until workers catch up; keep the accumulator primed.
         setBuffering(true)
         acc = frameDur
+        if (stall.pos !== nextPos) {
+          stall.pos = nextPos
+          stall.requested = false
+          stall.fails = 0
+        }
+        if (nextFrame && !stall.requested) {
+          stall.requested = true
+          engine
+            .getProcessed(nextFrame, settingsAt(contentIdx), PRIORITY.PREVIEW, stateRef.current.generation)
+            .then(() => {
+              stall.requested = false // ready on the next tick
+            })
+            .catch(() => {
+              stall.fails++
+              if (stall.fails >= 4) {
+                // A genuinely unrecoverable frame: stop with a clear
+                // message instead of freezing silently.
+                setPlaying(false)
+                showToast(`Frame ${contentIdx + 1} could not be processed — playback paused`, true)
+              } else {
+                stall.requested = false // retry on the next tick
+              }
+            })
+        }
       }
     }
     raf = requestAnimationFrame(step)
@@ -493,7 +529,7 @@ export default function App() {
       cancelAnimationFrame(raf)
       setBuffering(false)
     }
-  }, [playing, totalFrames, engine, settingsAt])
+  }, [playing, totalFrames, engine, settingsAt, showToast])
 
   const togglePlay = useCallback(() => {
     setPlaying((p) => {
@@ -592,19 +628,22 @@ export default function App() {
     [importImages, importVideo],
   )
 
-  /* New File: clear the canvas/source, keep settings + keyframes. */
-  const doNewFile = useCallback(() => {
+  /* New Canvas: clear only the loaded media (and its buffered frames);
+   * every dither setting and keyframe stays so new media can be loaded
+   * with the same look. */
+  const doNewCanvas = useCallback(() => {
     loadFrames([], 'none')
   }, [loadFrames])
 
-  const newFile = useCallback(() => {
-    if (frames.length > 0) setConfirmAction('new-file')
-    else doNewFile()
-  }, [frames.length, doNewFile])
+  const newCanvas = useCallback(() => {
+    if (frames.length > 0) setConfirmAction('new-canvas')
+    else doNewCanvas()
+  }, [frames.length, doNewCanvas])
 
-  /* New Project: clear source AND reset every parameter + keyframes. */
-  const doNewProject = useCallback(() => {
-    loadFrames([], 'none')
+  /* New File: full reset — media, all parameters, keyframes, timeline
+   * and processed-frame caches return to the clean default state. */
+  const doNewFile = useCallback(() => {
+    loadFrames([], 'none') // also cancels workers + clears caches
     replaceAll({ settings: DEFAULT_SETTINGS, keyframes: {} })
     setSelectedKf(null)
     setFps(12)
@@ -613,10 +652,10 @@ export default function App() {
     setCompare('dithered')
   }, [loadFrames, replaceAll])
 
-  const newProject = useCallback(() => {
-    if (frames.length > 0 || canUndo || hasAnyKeyframe) setConfirmAction('new-project')
-    else doNewProject()
-  }, [frames.length, canUndo, hasAnyKeyframe, doNewProject])
+  const newFile = useCallback(() => {
+    if (frames.length > 0 || canUndo || hasAnyKeyframe) setConfirmAction('new-file')
+    else doNewFile()
+  }, [frames.length, canUndo, hasAnyKeyframe, doNewFile])
 
   /* ---------- window-close guard ----------
      With work loaded, closing must not be silent. In Electron the
@@ -840,7 +879,7 @@ export default function App() {
         onUndo={undo}
         onRedo={redo}
         onNewFile={newFile}
-        onNewProject={newProject}
+        onNewCanvas={newCanvas}
         onOpen={() => openInputRef.current?.click()}
         onSavePreset={() => setPresetNameOpen(true)}
         onLoadPreset={loadPreset}
@@ -925,6 +964,12 @@ export default function App() {
             setUiStyle(id as typeof uiStyle)
             applyUiStyle(id)
           }}
+          cacheStats={() => engine.cacheStats()}
+          onClearCache={() => {
+            engine.clearAll()
+            setBufferTick((v) => v + 1) // refresh timeline buffer dots
+            showToast('Playback cache cleared')
+          }}
           onClose={() => setSettingsOpen(false)}
         />
       )}
@@ -978,32 +1023,34 @@ export default function App() {
           onClose={() => setPendingPalette(null)}
         />
       )}
+      {confirmAction === 'new-canvas' && (
+        <ConfirmModal
+          title="New Canvas"
+          message={
+            <>
+              This removes the loaded media and clears the canvas. All dither
+              settings and keyframes are kept, so you can load new media with
+              the same look. Export first if you want to keep the result.
+            </>
+          }
+          confirmLabel="Clear canvas"
+          onConfirm={doNewCanvas}
+          onClose={() => setConfirmAction(null)}
+        />
+      )}
       {confirmAction === 'new-file' && (
         <ConfirmModal
           title="New File"
           message={
             <>
-              This clears the current source. If you want to keep your work,
-              save a preset or export the result before continuing.
+              This resets everything to a clean default state: the loaded
+              media, every setting, all keyframes and the timeline. If you
+              want to keep your work, save a preset or export the result
+              before continuing.
             </>
           }
-          confirmLabel="Clear source"
+          confirmLabel="Reset everything"
           onConfirm={doNewFile}
-          onClose={() => setConfirmAction(null)}
-        />
-      )}
-      {confirmAction === 'new-project' && (
-        <ConfirmModal
-          title="New Project"
-          message={
-            <>
-              This clears the source and resets every setting and keyframe.
-              If you want to keep your work, save a preset or export the
-              result before continuing.
-            </>
-          }
-          confirmLabel="Reset project"
-          onConfirm={doNewProject}
           onClose={() => setConfirmAction(null)}
         />
       )}
