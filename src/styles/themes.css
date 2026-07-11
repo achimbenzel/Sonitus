@@ -44,7 +44,7 @@
 [data-theme='light'] .vp-empty{
   background:repeating-linear-gradient(135deg,rgba(222,238,243,.9) 0 10px,rgba(209,229,236,.9) 10px 20px)}
 [data-theme='light'] .vp-empty-inner{background:rgba(244,250,252,.6)}
-[data-theme='light'] .sidebar{background:linear-gradient(180deg,rgba(255,255,255,.5),rgba(228,241,246,.75))}
+[data-theme='light'] .sidebar,[data-theme='light'] .side-rail{background:linear-gradient(180deg,rgba(255,255,255,.5),rgba(228,241,246,.75))}
 [data-theme='light'] .timeline{background:linear-gradient(180deg,rgba(255,255,255,.5),rgba(228,241,246,.85))}
 [data-theme='light'] .btn{background:linear-gradient(180deg,rgba(255,255,255,.9),rgba(70,179,204,.12));
   box-shadow:var(--gloss-inset),0 4px 12px rgba(23,68,84,.15)}
@@ -104,7 +104,7 @@
 [data-theme='clean'] .vp-empty{background:#0e0e10}
 [data-theme='clean'] .vp-empty-inner{background:#141416}
 [data-theme='clean']{--logo-color:#fafafa}
-[data-theme='clean'] .sidebar,[data-theme='clean'] .timeline,[data-theme='clean'] .topbar{
+[data-theme='clean'] .sidebar,[data-theme='clean'] .side-rail,[data-theme='clean'] .timeline,[data-theme='clean'] .topbar{
   background:var(--paper);backdrop-filter:none;-webkit-backdrop-filter:none;box-shadow:none}
 [data-theme='clean'] .btn,[data-theme='clean'] .select-trigger,[data-theme='clean'] .numfield{
   background:var(--paper-card)}
@@ -182,7 +182,7 @@
 [data-theme='xp'] .viewport{background:#f6f3e9}
 [data-theme='xp'] .vp-empty{background:repeating-linear-gradient(135deg,#efece0 0 10px,#e6e3d5 10px 20px)}
 [data-theme='xp'] .vp-empty-inner{background:rgba(245,244,234,.85)}
-[data-theme='xp'] .sidebar,[data-theme='xp'] .timeline{
+[data-theme='xp'] .sidebar,[data-theme='xp'] .side-rail,[data-theme='xp'] .timeline{
   background:var(--paper);backdrop-filter:none;-webkit-backdrop-filter:none}
 [data-theme='xp'] .btn,[data-theme='xp'] .select-trigger,[data-theme='xp'] .numfield{
   background:linear-gradient(180deg,#fffef7,#eceadb 45%,#dcd9c4);
@@ -278,7 +278,7 @@
   background:repeating-linear-gradient(135deg,rgba(13,22,11,.9) 0 10px,rgba(9,15,7,.9) 10px 20px)}
 [data-theme='signal'] .vp-empty-inner{background:rgba(7,10,6,.6)}
 [data-theme='signal']{--logo-color:var(--sky-blue)}
-[data-theme='signal'] .sidebar{background:linear-gradient(180deg,rgba(167,232,22,.04),rgba(11,17,9,.78))}
+[data-theme='signal'] .sidebar,[data-theme='signal'] .side-rail{background:linear-gradient(180deg,rgba(167,232,22,.04),rgba(11,17,9,.78))}
 [data-theme='signal'] .timeline{background:linear-gradient(180deg,rgba(167,232,22,.03),rgba(8,13,6,.88))}
 /* glossy lime "blade" primaries */
 [data-theme='signal'] .btn--teal,[data-theme='signal'] .tl-play,[data-theme='signal'] .vp-chip.active,

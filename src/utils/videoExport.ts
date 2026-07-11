@@ -14,7 +14,7 @@ import { zipSync } from 'fflate'
 import { stampPngBytes } from './pngMeta'
 import type { DitherSettings, SourceFrame } from '../types'
 import { PRIORITY, ProcessingEngine } from '../engine/ProcessingEngine'
-import { downloadBlob } from './export'
+import { downloadBlob, knockOutColor, wantsTransparency } from './export'
 
 export interface AnimationExportOptions {
   engine: ProcessingEngine
@@ -203,7 +203,10 @@ export async function exportPngSequence(opts: AnimationExportOptions): Promise<v
 
   for (let i = 0; i < totalFrames; i++) {
     if (handle.cancelled) return
-    await renderFrameInto(engine, frames, i, settingsAt(i), canvas)
+    const s = settingsAt(i)
+    await renderFrameInto(engine, frames, i, s, canvas)
+    // Knocked out per frame: a keyframed shadow color stays correct.
+    if (wantsTransparency(s)) knockOutColor(canvas, s.darkColor)
     const blob = await canvas.convertToBlob({ type: 'image/png' })
     files[`frame_${String(i + 1).padStart(4, '0')}.png`] = stampPngBytes(
       new Uint8Array(await blob.arrayBuffer()),

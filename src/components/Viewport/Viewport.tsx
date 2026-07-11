@@ -10,7 +10,7 @@
    ============================================================ */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Maximize } from 'lucide-react'
+import { ChevronsLeftRight, Maximize } from 'lucide-react'
 import type { CompareMode, SourceFrame } from '../../types'
 import { AppLogo } from '../ui/AppLogo'
 
@@ -348,7 +348,9 @@ export function Viewport({
           style={{ left: `${splitPos * 100}%` }}
           onPointerDown={onSplitDown}
         >
-          <span className="split-handle">◂▸</span>
+          <span className="split-handle">
+            <ChevronsLeftRight size={14} strokeWidth={2.5} />
+          </span>
           <span className="split-labels">
             <span className="split-label left">Original</span>
             <span className="split-label right">Dithered</span>

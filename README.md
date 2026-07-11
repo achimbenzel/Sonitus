@@ -80,7 +80,8 @@ src/
 ├── components/
 │   ├── TopBar/                 desktop-style header: file/preset/history actions
 │   ├── Viewport/               canvas, zoom/pan, compare modes, drag&drop
-│   ├── Sidebar/                import, dither/tone/palette controls + Export section
+│   ├── Sidebar/                icon rail + tabbed sections (Import, Dither,
+│   │                           Tone, Effects, Palette, Export)
 │   ├── Timeline/               always-visible ruler timeline: ticks, playhead,
 │   │                           scrub, Ctrl+wheel zoom, keyframe markers, thumbs
 │   ├── ProgressOverlay/        import/export progress + cancel
@@ -271,6 +272,18 @@ pixels **and** the resulting print size in inches/cm, so screenprint and
 prepress sizing is readable at a glance. Pixel dimensions never change
 with DPI — it is pure density metadata.
 
+**Transparent background** — an Export toggle (mono palette mode) that
+knocks the shadow color out to full transparency in the formats that carry
+alpha: PNG stills, PNG sequence frames (per frame, so a keyframed shadow
+color stays correct) and SVG (shadow paths are simply omitted). JPEG has
+no alpha, and MP4/GIF exports stay opaque. Stored in presets.
+
+**Sidebar tabs** — a vertical icon rail (local lucide icons) next to the
+sidebar switches between the six sections — Import, Dither, Tone, Effects,
+Palette, Export — one at a time, with the active tab highlighted and
+remembered across sessions. Grey levels lives in the Palette tab (it is a
+palette property), still keyframable.
+
 **Presets** — full parameter set (incl. FPS/loop, algorithm +
 algorithm-specific options like the screen angle, DPI, effect chain state,
 color mapping, palette style and custom palette) exports as a
@@ -356,6 +369,10 @@ while typing in inputs.
 - **TIFF import is not supported** — browsers cannot decode TIFF natively
   and a decoder library would outweigh its use here; convert to PNG first.
   PNG/JPG/WebP/BMP/GIF decode natively.
+- **Transparent export knocks out the exact shadow color** (mono mode
+  only) — grey-level ramps keep their intermediate tones opaque, and
+  image-palette mode has no single background color, so the toggle is
+  disabled there. GIF/MP4/JPEG exports stay opaque.
 - **Effect enable toggles are not keyframable** (a judgment call on
   "where practical"): hard on/off pops mid-animation read as glitches, and
   every effect fades cleanly by animating its strength to 0 instead —

@@ -31,6 +31,27 @@ function scaleToCanvas(bmp: ImageBitmap, settings: DitherSettings): OffscreenCan
   return c
 }
 
+/** True when this export should knock the shadow color out to full
+ *  transparency (mono palettes only — image palettes have no single
+ *  "background" color). */
+export function wantsTransparency(settings: DitherSettings): boolean {
+  return settings.exportTransparent && settings.paletteMode === 'mono'
+}
+
+/** Make every pixel that exactly matches `hex` fully transparent.
+ *  Dithered output uses exact palette colors, so exact matching is
+ *  reliable — only the shadow/background level is affected. */
+export function knockOutColor(canvas: OffscreenCanvas, hex: string): void {
+  const [r, g, b] = hexToRgb(hex)
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })!
+  const img = ctx.getImageData(0, 0, canvas.width, canvas.height)
+  const d = img.data
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i] === r && d[i + 1] === g && d[i + 2] === b) d[i + 3] = 0
+  }
+  ctx.putImageData(img, 0, 0)
+}
+
 function baseName(frame: SourceFrame): string {
   return frame.name.replace(/\.[a-z0-9]+$/i, '') || 'dithered'
 }
@@ -57,6 +78,7 @@ export async function exportStill(
     downloadBlob(blob, `${baseName(frame)}_dithered.jpg`)
     return
   }
+  if (wantsTransparency(settings)) knockOutColor(canvas, settings.darkColor)
   const blob = await stampPngBlob(await canvas.convertToBlob({ type: 'image/png' }), settings.dpi)
   downloadBlob(blob, `${baseName(frame)}_dithered.png`)
 }
@@ -131,6 +153,14 @@ export async function exportSvg(
   settings: DitherSettings,
 ): Promise<void> {
   const raw = await engine.getProcessedData(frame, settings)
+  if (wantsTransparency(settings)) {
+    // Zero the shadow color's alpha — the vectorizer skips transparent
+    // runs, so those areas are simply absent from the SVG.
+    const [r, g, b] = hexToRgb(settings.darkColor)
+    for (let i = 0; i < raw.data.length; i += 4) {
+      if (raw.data[i] === r && raw.data[i + 1] === g && raw.data[i + 2] === b) raw.data[i + 3] = 0
+    }
+  }
   const svg = rawImageToSvg(raw, settings.pixelScale, settings.dpi)
   downloadBlob(new Blob([svg], { type: 'image/svg+xml' }), `${baseName(frame)}_dithered.svg`)
 }

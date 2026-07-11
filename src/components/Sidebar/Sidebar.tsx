@@ -1,5 +1,21 @@
 import { useRef, useState } from 'react'
-import { Clapperboard, Download, FileArchive, Film, FolderOpen, ImagePlus, Images, Layers, Save, X } from 'lucide-react'
+import {
+  Clapperboard,
+  Download,
+  FileArchive,
+  Film,
+  FolderInput,
+  FolderOpen,
+  ImagePlus,
+  Images,
+  Layers,
+  LayoutGrid,
+  Palette as PaletteIcon,
+  Save,
+  Sparkles,
+  SunMedium,
+  X,
+} from 'lucide-react'
 import type { DitherSettings, EffectId, ExportKind, KeyframableParam, ProjectKind } from '../../types'
 import { DEFAULT_SETTINGS } from '../../types'
 import { ALGORITHMS, isErrorDiffusion } from '../../dither/algorithms/index'
@@ -11,6 +27,23 @@ import { NumberField } from '../ui/NumberField'
 import { PaletteEditor } from './PaletteEditor'
 
 const DPI_PRESETS = [72, 96, 150, 200, 300, 600]
+
+/* Icon-rail tabs: exactly one sidebar section is visible at a time. */
+type SideTab = 'import' | 'dither' | 'tone' | 'effects' | 'palette' | 'export'
+const SIDE_TABS: { id: SideTab; label: string; Icon: typeof FolderInput }[] = [
+  { id: 'import', label: 'Import', Icon: FolderInput },
+  { id: 'dither', label: 'Dither', Icon: LayoutGrid },
+  { id: 'tone', label: 'Tone', Icon: SunMedium },
+  { id: 'effects', label: 'Effects', Icon: Sparkles },
+  { id: 'palette', label: 'Palette', Icon: PaletteIcon },
+  { id: 'export', label: 'Export', Icon: Download },
+]
+const TAB_KEY = 'sonitus.sideTab'
+
+function loadTab(): SideTab {
+  const stored = localStorage.getItem(TAB_KEY)
+  return SIDE_TABS.some((t) => t.id === stored) ? (stored as SideTab) : 'dither'
+}
 
 /* Per-effect UI definition; rows render in settings.fxOrder order.
    `valueKey` is the keyframable strength parameter. */
@@ -91,6 +124,11 @@ export function Sidebar({
   const sequenceInput = useRef<HTMLInputElement>(null)
   const videoInput = useRef<HTMLInputElement>(null)
   const paletteInput = useRef<HTMLInputElement>(null)
+  const [tab, setTabState] = useState<SideTab>(loadTab)
+  const setTab = (t: SideTab) => {
+    setTabState(t)
+    localStorage.setItem(TAB_KEY, t)
+  }
   /** True while the user works with a non-preset DPI value. */
   const [dpiCustomMode, setDpiCustomMode] = useState(false)
   const dpiIsPreset = DPI_PRESETS.includes(settings.dpi)
@@ -110,8 +148,27 @@ export function Sidebar({
   const d = DEFAULT_SETTINGS
 
   return (
-    <aside className="sidebar">
+    <div className="side-wrap">
+      {/* icon rail: pick the visible section */}
+      <nav className="side-rail" role="tablist" aria-label="Sidebar sections">
+        {SIDE_TABS.map(({ id, label, Icon }) => (
+          <button
+            key={id}
+            role="tab"
+            aria-selected={tab === id}
+            aria-label={label}
+            title={label}
+            className={`rail-btn${tab === id ? ' active' : ''}`}
+            onClick={() => setTab(id)}
+          >
+            <Icon size={17} />
+          </button>
+        ))}
+      </nav>
+
+      <aside className="sidebar">
       {/* ---------- IMPORT ---------- */}
+      {tab === 'import' && (
       <Section label="Import">
         <div className="import-btns">
           <button className="btn btn--sm" onClick={() => imageInput.current?.click()}>
@@ -139,8 +196,12 @@ export function Sidebar({
             </>
           )}
         </div>
+      </Section>
+      )}
 
-        <input
+      {/* Hidden file inputs stay mounted regardless of the active tab
+          (drag&drop and tests feed them directly). */}
+      <input
           ref={imageInput}
           type="file"
           accept="image/png,image/jpeg,image/webp,image/bmp,image/gif,.png,.jpg,.jpeg,.webp,.bmp,.gif"
@@ -163,7 +224,7 @@ export function Sidebar({
             e.target.value = ''
           }}
         />
-        <input
+      <input
           ref={videoInput}
           type="file"
           accept="video/mp4,video/webm,.mp4,.webm,.mov"
@@ -174,9 +235,20 @@ export function Sidebar({
             e.target.value = ''
           }}
         />
-      </Section>
+      <input
+        ref={paletteInput}
+        type="file"
+        accept=".sonitus-palette,.json,application/json"
+        style={{ display: 'none' }}
+        onChange={(e) => {
+          const f = e.target.files?.[0]
+          if (f) onLoadPalette(f)
+          e.target.value = ''
+        }}
+      />
 
       {/* ---------- DITHER ---------- */}
+      {tab === 'dither' && (
       <Section label="Dither">
         <SelectRow
           label="Algorithm"
@@ -211,19 +283,11 @@ export function Sidebar({
           disabled={!errorDiffusion}
           onChange={(v) => update({ serpentine: v })}
         />
-        <SliderRow
-          label="Grey levels"
-          value={settings.greyLevels}
-          min={2}
-          max={16}
-          resetValue={d.greyLevels}
-          disabled={!mono && !legacyImage}
-          kf={kfControl('greyLevels')}
-          onChange={(v) => updateParam('greyLevels', v)}
-        />
       </Section>
+      )}
 
       {/* ---------- TONE ---------- */}
+      {tab === 'tone' && (
       <Section label="Tone">
         <SliderRow
           label="Brightness"
@@ -269,8 +333,10 @@ export function Sidebar({
           onChange={(v) => update({ invert: v })}
         />
       </Section>
+      )}
 
       {/* ---------- EFFECTS (pre-dither chain, user-ordered) ---------- */}
+      {tab === 'effects' && (
       <Section label="Effects">
         <div className="fxnote">Applied top to bottom, before dithering</div>
         {fxOrder.map((id, idx) => {
@@ -301,8 +367,10 @@ export function Sidebar({
           )
         })}
       </Section>
+      )}
 
       {/* ---------- PALETTE ---------- */}
+      {tab === 'palette' && (
       <Section label="Palette">
         <SelectRow
           label="Palette mode"
@@ -321,6 +389,16 @@ export function Sidebar({
             { value: 'legacy', label: 'Legacy (RGB Levels)' },
           ]}
           onChange={(v) => update({ colorMapping: v as DitherSettings['colorMapping'] })}
+        />
+        <SliderRow
+          label="Grey levels"
+          value={settings.greyLevels}
+          min={2}
+          max={16}
+          resetValue={d.greyLevels}
+          disabled={!mono && !legacyImage}
+          kf={kfControl('greyLevels')}
+          onChange={(v) => updateParam('greyLevels', v)}
         />
 
         <ColorField
@@ -406,22 +484,13 @@ export function Sidebar({
             >
               <FolderOpen size={13} /> Load palette
             </button>
-            <input
-              ref={paletteInput}
-              type="file"
-              accept=".sonitus-palette,.json,application/json"
-              style={{ display: 'none' }}
-              onChange={(e) => {
-                const f = e.target.files?.[0]
-                if (f) onLoadPalette(f)
-                e.target.value = ''
-              }}
-            />
           </div>
         )}
       </Section>
+      )}
 
       {/* ---------- EXPORT ---------- */}
+      {tab === 'export' && (
       <Section label="Export">
         <SliderRow
           label="Pixel scale"
@@ -460,6 +529,17 @@ export function Sidebar({
             />
           </div>
         )}
+        <ToggleRow
+          label="Transparent background"
+          checked={settings.exportTransparent}
+          disabled={!mono}
+          onChange={(v) => update({ exportTransparent: v })}
+        />
+        <div className="fxnote">
+          {mono
+            ? 'Shadow pixels export as transparency (PNG, sequence, SVG)'
+            : 'Transparency needs Mono palette mode'}
+        </div>
         <div className="import-meta" style={{ marginTop: 0 }}>
           Output size: <b>
             {frameSize
@@ -560,6 +640,8 @@ export function Sidebar({
           </div>
         )}
       </Section>
-    </aside>
+      )}
+      </aside>
+    </div>
   )
 }

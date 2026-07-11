@@ -142,6 +142,9 @@ export interface DitherSettings {
   pixelScale: number
   /** Print resolution metadata for exports (PNG/JPEG/CMYK), 10..1200. */
   dpi: number
+  /** Mono exports: make shadow-color pixels fully transparent
+   *  (PNG stills, PNG sequences and SVG — formats with alpha). */
+  exportTransparent: boolean
 }
 
 /** The subset of settings the worker pipeline needs.
@@ -181,6 +184,7 @@ export const DEFAULT_SETTINGS: DitherSettings = {
   customPalette: ['#071318', '#1c3fae', '#46b3cc', '#4af17a', '#ffb02e', '#e8f4f8'],
   pixelScale: 1,
   dpi: 96,
+  exportTransparent: false,
 }
 
 export type ProjectKind = 'none' | 'image' | 'sequence' | 'video'

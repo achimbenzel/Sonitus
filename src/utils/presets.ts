@@ -171,6 +171,7 @@ export function parsePreset(json: string): ParsedPreset {
     paletteSize: Math.round(num(obj, 'paletteSize', 2, 32, d.paletteSize)),
     pixelScale: Math.round(num(obj, 'pixelScale', 1, 16, d.pixelScale)),
     dpi: Math.round(num(obj, 'dpi', 10, 1200, d.dpi)),
+    exportTransparent: bool(obj, 'exportTransparent', d.exportTransparent),
   }
   return {
     settings,
