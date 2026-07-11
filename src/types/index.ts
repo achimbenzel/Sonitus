@@ -184,7 +184,7 @@ export const DEFAULT_SETTINGS: DitherSettings = {
   customPalette: ['#071318', '#1c3fae', '#46b3cc', '#4af17a', '#ffb02e', '#e8f4f8'],
   pixelScale: 1,
   dpi: 96,
-  exportTransparent: false,
+  exportTransparent: true,
 }
 
 export type ProjectKind = 'none' | 'image' | 'sequence' | 'video'

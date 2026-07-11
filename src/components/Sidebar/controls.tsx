@@ -283,11 +283,13 @@ export function ToggleRow({ label, checked, disabled, onChange }: {
   )
 }
 
-export function SelectRow({ label, value, options, disabled, onChange }: {
+export function SelectRow({ label, value, options, disabled, searchable, onChange }: {
   label: string
   value: string
   options: SelectOption[]
   disabled?: boolean
+  /** Filter field at the top of the menu (long lists). */
+  searchable?: boolean
   onChange: (v: string) => void
 }) {
   return (
@@ -295,7 +297,7 @@ export function SelectRow({ label, value, options, disabled, onChange }: {
       <div className="control-head">
         <span className="control-label">{label}</span>
       </div>
-      <Select value={value} options={options} onChange={onChange} disabled={disabled} ariaLabel={label} />
+      <Select value={value} options={options} onChange={onChange} disabled={disabled} ariaLabel={label} searchable={searchable} />
     </div>
   )
 }

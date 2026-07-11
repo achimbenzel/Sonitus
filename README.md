@@ -275,14 +275,18 @@ with DPI — it is pure density metadata.
 **Transparent background** — an Export toggle (mono palette mode) that
 knocks the shadow color out to full transparency in the formats that carry
 alpha: PNG stills, PNG sequence frames (per frame, so a keyframed shadow
-color stays correct) and SVG (shadow paths are simply omitted). JPEG has
-no alpha, and MP4/GIF exports stay opaque. Stored in presets.
+color stays correct), SVG (shadow paths are simply omitted) and **animated
+GIF** (1-bit GIF transparency with per-frame background disposal — source
+alpha is honored too). The toggle is **on by default**. JPEG has no alpha
+and MP4 exports stay opaque. Stored in presets.
 
 **Sidebar tabs** — a vertical icon rail (local lucide icons) next to the
-sidebar switches between the six sections — Import, Dither, Tone, Effects,
-Palette, Export — one at a time, with the active tab highlighted and
-remembered across sessions. Grey levels lives in the Palette tab (it is a
-palette property), still keyframable.
+sidebar switches between five tabs — Import, Dither (which carries both
+the Dither and Tone sections), Effects, Palette, Export — one at a time,
+with the active tab highlighted and remembered across sessions. Grey
+levels and Invert live in the Palette tab (they are palette properties);
+Grey levels stays keyframable. The 40-algorithm dropdown has a built-in
+search field for quick filtering.
 
 **Presets** — full parameter set (incl. FPS/loop, algorithm +
 algorithm-specific options like the screen angle, DPI, effect chain state,
@@ -372,7 +376,8 @@ while typing in inputs.
 - **Transparent export knocks out the exact shadow color** (mono mode
   only) — grey-level ramps keep their intermediate tones opaque, and
   image-palette mode has no single background color, so the toggle is
-  disabled there. GIF/MP4/JPEG exports stay opaque.
+  disabled there. GIF transparency is 1-bit (fully on/off, as the format
+  allows); MP4/JPEG exports stay opaque.
 - **Effect enable toggles are not keyframable** (a judgment call on
   "where practical"): hard on/off pops mid-animation read as glitches, and
   every effect fades cleanly by animating its strength to 0 instead —

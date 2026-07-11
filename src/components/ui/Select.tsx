@@ -1,11 +1,12 @@
 /* ============================================================
    Custom select: replaces native <select> with a fully styled
    trigger + popup listbox (hover/focus/open/disabled states,
-   keyboard navigation, optional option groups).
+   keyboard navigation, optional option groups and an optional
+   search field for long lists).
    ============================================================ */
 
 import { useEffect, useRef, useState } from 'react'
-import { Check, ChevronDown } from 'lucide-react'
+import { Check, ChevronDown, Search } from 'lucide-react'
 
 export interface SelectOption {
   value: string
@@ -21,15 +22,26 @@ interface SelectProps {
   ariaLabel?: string
   /** Small inline variant (e.g. color picker mode switch). */
   compact?: boolean
+  /** Show a filter field at the top of the menu (for long lists). */
+  searchable?: boolean
 }
 
-export function Select({ value, options, onChange, disabled, ariaLabel, compact }: SelectProps) {
+export function Select({ value, options, onChange, disabled, ariaLabel, compact, searchable }: SelectProps) {
   const [open, setOpen] = useState(false)
   const [active, setActive] = useState(-1)
+  const [query, setQuery] = useState('')
   const rootRef = useRef<HTMLDivElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
+  const searchRef = useRef<HTMLInputElement>(null)
 
   const selected = options.find((o) => o.value === value)
+
+  // The rendered list; with an active search it is the filtered subset.
+  const trimmed = query.trim().toLowerCase()
+  const visible =
+    searchable && trimmed !== ''
+      ? options.filter((o) => o.label.toLowerCase().includes(trimmed))
+      : options
 
   useEffect(() => {
     if (!open) return
@@ -48,12 +60,14 @@ export function Select({ value, options, onChange, disabled, ariaLabel, compact 
   }, [open, active])
 
   const openMenu = () => {
+    setQuery('')
     setActive(options.findIndex((o) => o.value === value))
     setOpen(true)
+    if (searchable) requestAnimationFrame(() => searchRef.current?.focus())
   }
 
   const commit = (idx: number) => {
-    const opt = options[idx]
+    const opt = visible[idx]
     if (opt) onChange(opt.value)
     setOpen(false)
   }
@@ -72,11 +86,14 @@ export function Select({ value, options, onChange, disabled, ariaLabel, compact 
       setOpen(false)
     } else if (e.key === 'ArrowDown') {
       e.preventDefault()
-      setActive((a) => Math.min(options.length - 1, a + 1))
+      setActive((a) => Math.min(visible.length - 1, a + 1))
     } else if (e.key === 'ArrowUp') {
       e.preventDefault()
       setActive((a) => Math.max(0, a - 1))
-    } else if (e.key === 'Enter' || e.key === ' ') {
+    } else if (e.key === 'Enter') {
+      e.preventDefault()
+      commit(active)
+    } else if (e.key === ' ' && !searchable) {
       e.preventDefault()
       commit(active)
     } else if (e.key === 'Tab') {
@@ -87,7 +104,7 @@ export function Select({ value, options, onChange, disabled, ariaLabel, compact 
   // Render options preserving group order, with group headers.
   let lastGroup: string | undefined
   const items: JSX.Element[] = []
-  options.forEach((opt, idx) => {
+  visible.forEach((opt, idx) => {
     if (opt.group !== lastGroup) {
       lastGroup = opt.group
       if (opt.group) {
@@ -131,7 +148,25 @@ export function Select({ value, options, onChange, disabled, ariaLabel, compact 
       </button>
       {open && (
         <div className="select-menu" role="listbox" ref={menuRef}>
-          {items}
+          {searchable && (
+            <div className="select-search">
+              <Search size={12} />
+              <input
+                ref={searchRef}
+                type="text"
+                value={query}
+                placeholder="Search…"
+                aria-label={`Search ${ariaLabel ?? 'options'}`}
+                spellCheck={false}
+                onChange={(e) => {
+                  setQuery(e.target.value)
+                  setActive(0)
+                }}
+                onKeyDown={onKeyDown}
+              />
+            </div>
+          )}
+          {items.length > 0 ? items : <div className="select-empty">No matches</div>}
         </div>
       )}
     </div>

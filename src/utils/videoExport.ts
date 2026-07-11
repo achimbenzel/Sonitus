@@ -172,14 +172,41 @@ export async function exportGif(opts: AnimationExportOptions): Promise<void> {
 
   for (let i = 0; i < totalFrames; i++) {
     if (handle.cancelled) return
-    await renderFrameInto(engine, frames, i, settingsAt(i), canvas)
+    const s = settingsAt(i)
+    await renderFrameInto(engine, frames, i, s, canvas)
+    if (wantsTransparency(s)) knockOutColor(canvas, s.darkColor)
     const ctx = canvas.getContext('2d', { willReadFrequently: true })!
     const { data, width, height } = ctx.getImageData(0, 0, canvas.width, canvas.height)
-    // Dithered output is already palette-limited, so 256 colors is lossless
-    // for mono modes and near-lossless for image-palette mode.
-    const palette = quantize(data, 256)
-    const index = applyPalette(data, palette)
-    gif.writeFrame(index, width, height, { palette, delay })
+    // Any alpha (source transparency or the knocked-out shadow color)
+    // becomes GIF 1-bit transparency: quantize with alpha kept, then
+    // mark the fully transparent palette entry.
+    let hasAlpha = false
+    for (let p = 3; p < data.length; p += 4) {
+      if (data[p] < 128) {
+        hasAlpha = true
+        break
+      }
+    }
+    if (hasAlpha) {
+      const palette = quantize(data, 256, { format: 'rgba4444', oneBitAlpha: true })
+      const index = applyPalette(data, palette, 'rgba4444')
+      const transparentIndex = palette.findIndex((p) => p[3] === 0)
+      gif.writeFrame(index, width, height, {
+        palette,
+        delay,
+        transparent: transparentIndex >= 0,
+        transparentIndex: Math.max(0, transparentIndex),
+        // Restore to background between frames so transparency doesn't
+        // accumulate previous frames underneath.
+        dispose: 2,
+      })
+    } else {
+      // Dithered output is already palette-limited, so 256 colors is
+      // lossless for mono modes, near-lossless for image-palette mode.
+      const palette = quantize(data, 256)
+      const index = applyPalette(data, palette)
+      gif.writeFrame(index, width, height, { palette, delay })
+    }
     onProgress((i + 1) / totalFrames)
   }
 

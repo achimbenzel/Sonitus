@@ -13,7 +13,6 @@ import {
   Palette as PaletteIcon,
   Save,
   Sparkles,
-  SunMedium,
   X,
 } from 'lucide-react'
 import type { DitherSettings, EffectId, ExportKind, KeyframableParam, ProjectKind } from '../../types'
@@ -28,12 +27,12 @@ import { PaletteEditor } from './PaletteEditor'
 
 const DPI_PRESETS = [72, 96, 150, 200, 300, 600]
 
-/* Icon-rail tabs: exactly one sidebar section is visible at a time. */
-type SideTab = 'import' | 'dither' | 'tone' | 'effects' | 'palette' | 'export'
+/* Icon-rail tabs: exactly one sidebar tab is visible at a time.
+   The Dither tab carries both the Dither and Tone sections. */
+type SideTab = 'import' | 'dither' | 'effects' | 'palette' | 'export'
 const SIDE_TABS: { id: SideTab; label: string; Icon: typeof FolderInput }[] = [
   { id: 'import', label: 'Import', Icon: FolderInput },
   { id: 'dither', label: 'Dither', Icon: LayoutGrid },
-  { id: 'tone', label: 'Tone', Icon: SunMedium },
   { id: 'effects', label: 'Effects', Icon: Sparkles },
   { id: 'palette', label: 'Palette', Icon: PaletteIcon },
   { id: 'export', label: 'Export', Icon: Download },
@@ -42,6 +41,7 @@ const TAB_KEY = 'sonitus.sideTab'
 
 function loadTab(): SideTab {
   const stored = localStorage.getItem(TAB_KEY)
+  if (stored === 'tone') return 'dither' // pre-merge sessions
   return SIDE_TABS.some((t) => t.id === stored) ? (stored as SideTab) : 'dither'
 }
 
@@ -254,6 +254,7 @@ export function Sidebar({
           label="Algorithm"
           value={settings.algorithm}
           options={ALGORITHM_OPTIONS}
+          searchable
           onChange={(v) => update({ algorithm: v as DitherSettings['algorithm'] })}
         />
         {settings.algorithm === 'screen-halftone' && (
@@ -286,8 +287,8 @@ export function Sidebar({
       </Section>
       )}
 
-      {/* ---------- TONE ---------- */}
-      {tab === 'tone' && (
+      {/* ---------- TONE (shares the Dither tab) ---------- */}
+      {tab === 'dither' && (
       <Section label="Tone">
         <SliderRow
           label="Brightness"
@@ -326,11 +327,6 @@ export function Sidebar({
           resetValue={d.threshold}
           kf={kfControl('threshold')}
           onChange={(v) => updateParam('threshold', v)}
-        />
-        <ToggleRow
-          label="Invert"
-          checked={settings.invert}
-          onChange={(v) => update({ invert: v })}
         />
       </Section>
       )}
@@ -399,6 +395,11 @@ export function Sidebar({
           disabled={!mono && !legacyImage}
           kf={kfControl('greyLevels')}
           onChange={(v) => updateParam('greyLevels', v)}
+        />
+        <ToggleRow
+          label="Invert"
+          checked={settings.invert}
+          onChange={(v) => update({ invert: v })}
         />
 
         <ColorField
