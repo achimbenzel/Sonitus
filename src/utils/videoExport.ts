@@ -1,5 +1,5 @@
 /* ============================================================
-   Animated export: MP4 (WebCodecs + mp4-muxer) and GIF (gifenc).
+   Animated export: MP4 (WebCodecs + mediabunny) and GIF (gifenc).
 
    Both encoders run fully client-side and offline. Frames are
    rendered through the same engine/keyframe path as the preview:
@@ -8,7 +8,13 @@
    before encoding.
    ============================================================ */
 
-import { ArrayBufferTarget, Muxer } from 'mp4-muxer'
+import {
+  BufferTarget,
+  CanvasSource,
+  getFirstEncodableVideoCodec,
+  Mp4OutputFormat,
+  Output,
+} from 'mediabunny'
 import { GIFEncoder, applyPalette, quantize } from 'gifenc'
 import { zipSync } from 'fflate'
 import { stampPngBytes } from './pngMeta'
@@ -77,87 +83,59 @@ async function renderFrameInto(
 
 /* ---------- MP4 ---------- */
 
-interface CodecPick {
-  codec: string
-  muxCodec: 'avc' | 'vp9'
-  bitrate: number
-}
-
-async function pickVideoCodec(width: number, height: number, fps: number): Promise<CodecPick> {
-  if (typeof VideoEncoder === 'undefined') {
-    throw new Error('MP4 export needs WebCodecs (available in Chrome)')
-  }
-  const bitrate = Math.min(16_000_000, Math.max(1_000_000, Math.round(width * height * fps * 0.12)))
-  // H.264 first (widest player compatibility): High → Main → Baseline,
-  // level 4.2 covers 1080p60.
-  for (const codec of ['avc1.64002a', 'avc1.4d002a', 'avc1.42002a']) {
-    const support = await VideoEncoder.isConfigSupported({ codec, width, height, bitrate, framerate: fps })
-    if (support.supported) return { codec, muxCodec: 'avc', bitrate }
-  }
-  // Fallback: VP9 in MP4 — plays in Chrome/VLC; used when the browser
-  // build ships without proprietary H.264 encoders.
-  const vp9 = await VideoEncoder.isConfigSupported({
-    codec: 'vp09.00.41.08', width, height, bitrate, framerate: fps,
-  })
-  if (vp9.supported) return { codec: 'vp09.00.41.08', muxCodec: 'vp9', bitrate }
-  throw new Error('No MP4 video encoder (H.264/VP9) is available in this browser')
-}
-
 export async function exportMp4(opts: AnimationExportOptions): Promise<void> {
   const { engine, frames, totalFrames, fps, settingsAt, onProgress, handle } = opts
   if (frames.length === 0) throw new Error('Nothing to export')
+  if (typeof VideoEncoder === 'undefined') {
+    throw new Error('MP4 export needs WebCodecs (available in Chrome)')
+  }
 
   // One fixed size for the whole timeline; H.264 needs even dimensions.
   const out = computeOutputSize(frames, totalFrames, settingsAt)
   const width = Math.max(2, out.width - (out.width % 2))
   const height = Math.max(2, out.height - (out.height % 2))
-  const { codec, muxCodec, bitrate } = await pickVideoCodec(width, height, fps)
+  const bitrate = Math.min(16_000_000, Math.max(1_000_000, Math.round(width * height * fps * 0.12)))
+
+  // H.264 first (widest player compatibility); VP9-in-MP4 as fallback
+  // for Chromium builds without proprietary encoders (plays in
+  // Chrome/VLC). mediabunny probes WebCodecs encoder support.
+  const codec = await getFirstEncodableVideoCodec(['avc', 'vp9'], { width, height, bitrate })
+  if (!codec) throw new Error('No MP4 video encoder (H.264/VP9) is available in this browser')
 
   const canvas = new OffscreenCanvas(width, height)
-
-  const muxer = new Muxer({
-    target: new ArrayBufferTarget(),
-    video: { codec: muxCodec, width, height },
-    fastStart: 'in-memory',
+  const output = new Output({
+    format: new Mp4OutputFormat({ fastStart: 'in-memory' }),
+    target: new BufferTarget(),
   })
-  let encoderError: Error | null = null
-  const encoder = new VideoEncoder({
-    output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
-    error: (e) => {
-      encoderError = e instanceof Error ? e : new Error(String(e))
-    },
-  })
-  encoder.configure({ codec, width, height, bitrate, framerate: fps })
+  // Keyframe every ~2 seconds keeps seeking snappy without bloating size.
+  const source = new CanvasSource(canvas, { codec, bitrate, keyFrameInterval: 2 })
+  output.addVideoTrack(source, { frameRate: fps })
+  await output.start()
 
-  const frameDurUs = Math.round(1_000_000 / fps)
-  for (let i = 0; i < totalFrames; i++) {
-    if (handle.cancelled || encoderError) break
-    const s = settingsAt(i)
-    await renderFrameInto(engine, frames, i, s, canvas)
-    // MP4 has no alpha — composite over the background color.
-    flattenCanvas(canvas, s.bgColor)
-    const vf = new VideoFrame(canvas, {
-      timestamp: i * frameDurUs,
-      duration: frameDurUs,
-    })
-    // Keyframe every ~2 seconds keeps seeking snappy without bloating size.
-    encoder.encode(vf, { keyFrame: i % Math.max(1, fps * 2) === 0 })
-    vf.close()
-    // Backpressure: don't let the encode queue grow unbounded.
-    while (encoder.encodeQueueSize > 4) {
-      await new Promise((r) => setTimeout(r, 5))
+  try {
+    const frameDur = 1 / fps
+    for (let i = 0; i < totalFrames; i++) {
+      if (handle.cancelled) break
+      const s = settingsAt(i)
+      await renderFrameInto(engine, frames, i, s, canvas)
+      // MP4 has no alpha — composite over the background color.
+      flattenCanvas(canvas, s.bgColor)
+      // Awaiting add() respects writer + encoder backpressure.
+      await source.add(i * frameDur, frameDur)
+      onProgress((i + 1) / totalFrames)
     }
-    onProgress((i + 1) / totalFrames)
+    if (handle.cancelled) {
+      await output.cancel()
+      return
+    }
+    source.close()
+    await output.finalize()
+  } catch (err) {
+    await output.cancel().catch(() => undefined)
+    throw err
   }
-
-  if (!handle.cancelled && !encoderError) {
-    await encoder.flush()
-    muxer.finalize()
-    const blob = new Blob([muxer.target.buffer], { type: 'video/mp4' })
-    downloadBlob(blob, 'dithered.mp4')
-  }
-  encoder.close()
-  if (encoderError) throw encoderError
+  const blob = new Blob([output.target.buffer!], { type: 'video/mp4' })
+  downloadBlob(blob, 'dithered.mp4')
 }
 
 /* ---------- GIF ---------- */

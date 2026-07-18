@@ -81,7 +81,7 @@ src/
 │   ├── TopBar/                 desktop-style header: file/preset/history actions
 │   ├── Viewport/               canvas, zoom/pan, compare modes, drag&drop
 │   ├── Sidebar/                icon rail + tabbed sections (Import, Dither,
-│   │                           Tone, Effects, Palette, Export)
+│   │                           Tone, Effects, Palette, Animate, Export)
 │   ├── Timeline/               always-visible ruler timeline: ticks, playhead,
 │   │                           scrub, Ctrl+wheel zoom, keyframe markers, thumbs
 │   ├── ProgressOverlay/        import/export progress + cancel
@@ -94,7 +94,7 @@ src/
 │   │                           decode, MP4/WebM extraction + fps detection
 │   ├── export.ts               PNG/JPEG/SVG stills, zipped PNG sequences,
 │   │                           CMYK screenprint plates
-│   ├── videoExport.ts          MP4 (WebCodecs + mp4-muxer) and GIF (gifenc)
+│   ├── videoExport.ts          MP4 (WebCodecs + mediabunny) and GIF (gifenc)
 │   ├── pngMeta.ts              tEXt metadata + pHYs DPI chunks, JFIF density
 │   ├── palettes.ts             .sonitus-palette save/load/merge
 │   └── presets.ts              .sonitus preset export + validated import
@@ -227,8 +227,8 @@ end (5 s × 12 fps = 60 frames, end = 5.00 s), and ruler, counter, playhead
 and export all share this mapping.
 
 **Keyframes** — animate brightness, contrast, gamma, threshold, pre-blur,
-grey levels and both mono palette colors (resolution and pixel scale are
-plain settings by design). Keyframes are only ever created or updated
+grey levels, resolution, pixel scale, the effect strengths and both mono
+palette colors. Keyframes are only ever created or updated
 **explicitly**: changing a parameter is a live edit (discarded when the
 playhead moves); the diamond button creates a keyframe (no keyframe here),
 saves the changed value (amber "dirty" state) or removes the keyframe
@@ -290,12 +290,23 @@ image palette samples the filled image so the fill color is represented.
 Stored in presets and part of the processing cache key.
 
 **Sidebar tabs** — a vertical icon rail (local lucide icons) next to the
-sidebar switches between five tabs — Import, Dither (which carries both
-the Dither and Tone sections), Effects, Palette, Export — one at a time,
-with the active tab highlighted and remembered across sessions. Grey
-levels and Invert live in the Palette tab (they are palette properties);
-Grey levels stays keyframable. The 40-algorithm dropdown has a built-in
-search field for quick filtering.
+sidebar switches between six tabs — Import, Dither (which carries both
+the Dither and Tone sections), Effects, Palette, Animate, Export — one at
+a time, with the active tab highlighted and remembered across sessions.
+Grey levels and Invert live in the Palette tab (they are palette
+properties); Grey levels stays keyframable. The 40-algorithm dropdown has
+a built-in search field for quick filtering.
+
+**Animation presets** (Animate tab) — one-click animated dither looks:
+Threshold pulse, Pixel crunch, Glow bloom, Noise storm, Strobe flicker
+(hold easing), Color drift (hue rotation of the mono highlight color) and
+Focus pull. A preset generates **ordinary timeline keyframes** spread
+across the current timeline length — they are exactly as draggable,
+easing-editable and deletable as hand-made keyframes, and applying a
+preset is a single undo step (its settings tweaks, e.g. enabling the Glow
+effect, land in the same step). A preset replaces only the keyframes of
+the parameters it animates, so presets can be layered; "Clear all
+keyframes" removes everything (undoable).
 
 **Presets** — full parameter set (incl. FPS/loop, algorithm +
 algorithm-specific options like the screen angle, DPI, effect chain state,
@@ -339,7 +350,18 @@ while typing in inputs. The full list is shown in the About dialog
 
 - **MP4 export needs WebCodecs H.264** (present in regular Chrome). Chromium
   builds without proprietary codecs fall back to VP9-in-MP4, which plays in
-  Chrome/VLC but not in every desktop player.
+  Chrome/VLC but not in every desktop player. Muxing/encoding runs through
+  **mediabunny** (the maintained successor of mp4-muxer).
+- **`npm install` is free of deprecation warnings** via `overrides` that
+  lift transitive build-tool dependencies (`@electron/asar` 4,
+  `global-agent` 4, `rimraf` 6 — the APIs electron-builder and
+  electron-winstaller use were verified against the new majors).
+  `@electron/asar` 4 is ESM-only, so packaging desktop builds
+  (`electron:build*`) needs **Node ≥ 22.12** (`require(esm)`); the browser
+  app itself has no such requirement.
+- **`npm audit` still reports the dev-server-only esbuild/Vite advisory** —
+  it affects only the local dev server, and fixing it means a Vite 8 major
+  upgrade, deliberately not bundled into this change.
 - **GIF export re-quantizes each frame to ≤256 colors** — lossless for mono
   palettes, near-lossless for image-palette mode; large resolutions produce
   large files.

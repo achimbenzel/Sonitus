@@ -18,7 +18,7 @@
     "fflate": "^0.8.2",
     "gifenc": "^1.0.3",
     "lucide-react": "^1.23.0",
-    "mp4-muxer": "^5.2.2",
+    "mediabunny": "^1.50.9",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
@@ -33,5 +33,10 @@
   },
   "description": "Sonitus Dither Studio - professional offline image dithering app",
   "author": "Sonitus",
-  "main": "electron/main.cjs"
+  "main": "electron/main.cjs",
+  "overrides": {
+    "@electron/asar": "^4.2.0",
+    "global-agent": "^4.1.3",
+    "rimraf": "^6.1.3"
+  }
 }

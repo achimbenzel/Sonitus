@@ -428,6 +428,17 @@ button.color-swatch{padding:0}
 .inline-field{display:flex;align-items:center;justify-content:space-between;gap:10px}
 
 .export-btns{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+
+/* animation preset cards */
+.animpre{display:flex;flex-direction:column;gap:4px;padding:9px 10px;
+  border:1px solid var(--line);border-radius:var(--radius-small);
+  background:linear-gradient(180deg,rgba(255,255,255,.03),rgba(0,0,0,.14))}
+.animpre-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.animpre-name{font-family:var(--font-mono);font-size:.66rem;font-weight:700;
+  letter-spacing:.08em;text-transform:uppercase;color:var(--ink)}
+.animpre-desc{font-size:.72rem;line-height:1.35;color:var(--ink-soft)}
+.animpre-params{font-family:var(--font-mono);font-size:.54rem;font-weight:600;
+  letter-spacing:.08em;text-transform:uppercase;color:var(--ink-dim)}
 .export-btns .btn{justify-content:center}
 
 /* inline export progress (sidebar-only feedback) */
