@@ -25,7 +25,8 @@ import {
   setKeyframe,
   setKeyframeEasing,
 } from './keyframes/keyframes'
-import { generatePalette, rgbToHex } from './dither/palette'
+import { generatePalette, hexToRgb, rgbToHex } from './dither/palette'
+import { applyToneLut } from './dither/pipeline'
 import { buildImageFrames, decodeAnimatedImage, extractVideoFrames } from './utils/imageLoad'
 import { exportPaletteFile, mergePalettes, parsePaletteFile } from './utils/palettes'
 import { exportCmykPlates, exportStill, exportSvg, type SequenceExportHandle } from './utils/export'
@@ -206,6 +207,24 @@ export default function App() {
       const ctx = c.getContext('2d', { willReadFrequently: true })!
       ctx.drawImage(bmp, 0, 0, pw, ph)
       const data = ctx.getImageData(0, 0, pw, ph).data
+      // Mirror the pipeline's pre-dither steps on the sample: background
+      // fill first, then the tone LUT — the palette must follow
+      // brightness/contrast/gamma/invert (and see the fill color),
+      // otherwise e.g. inverting maps the inverted image back onto the
+      // original colors.
+      if (settings.bgFillOn) {
+        const [br, bg, bb] = hexToRgb(settings.bgColor)
+        for (let i = 0; i < data.length; i += 4) {
+          const a = data[i + 3]
+          if (a === 255) continue
+          const t = a / 255
+          data[i] = data[i] * t + br * (1 - t)
+          data[i + 1] = data[i + 1] * t + bg * (1 - t)
+          data[i + 2] = data[i + 2] * t + bb * (1 - t)
+          data[i + 3] = 255
+        }
+      }
+      applyToneLut(data, settings)
       const count = Math.min(32, Math.max(2, Math.round(settings.paletteSize)))
       const style = settings.paletteStyle as Exclude<DitherSettings['paletteStyle'], 'custom'>
       const palette = generatePalette(data, count, style).map(rgbToHex)
@@ -222,6 +241,12 @@ export default function App() {
     usesImagePalette,
     settings.paletteStyle,
     settings.paletteSize,
+    settings.brightness,
+    settings.contrast,
+    settings.gamma,
+    settings.invert,
+    settings.bgFillOn,
+    settings.bgColor,
     // join → stable identity while editing other settings
     settings.customPalette.join(','),
   ])

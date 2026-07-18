@@ -166,6 +166,8 @@ export function parsePreset(json: string): ParsedPreset {
     colorMapping: colorMapping as DitherSettings['colorMapping'],
     paletteStyle: paletteStyle as DitherSettings['paletteStyle'],
     customPalette,
+    bgFillOn: bool(obj, 'bgFillOn', d.bgFillOn),
+    bgColor: hex(obj, 'bgColor', d.bgColor),
     lightColor: hex(obj, 'lightColor', d.lightColor),
     darkColor: hex(obj, 'darkColor', d.darkColor),
     paletteSize: Math.round(num(obj, 'paletteSize', 2, 32, d.paletteSize)),

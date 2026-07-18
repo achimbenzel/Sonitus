@@ -272,13 +272,22 @@ pixels **and** the resulting print size in inches/cm, so screenprint and
 prepress sizing is readable at a glance. Pixel dimensions never change
 with DPI — it is pure density metadata.
 
-**Transparent background** — an Export toggle (mono palette mode) that
-knocks the shadow color out to full transparency in the formats that carry
-alpha: PNG stills, PNG sequence frames (per frame, so a keyframed shadow
-color stays correct), SVG (shadow paths are simply omitted) and **animated
-GIF** (1-bit GIF transparency with per-frame background disposal — source
-alpha is honored too). The toggle is **on by default**. JPEG has no alpha
-and MP4 exports stay opaque. Stored in presets.
+**Transparent background** — an Export toggle available in **every
+palette mode**, **on by default**. When ON, source alpha passes through to
+the formats that carry it — PNG stills, PNG sequence frames, SVG
+(transparent runs are simply omitted) and **animated GIF** (1-bit GIF
+transparency with per-frame background disposal) — and mono palettes
+additionally knock the shadow color out to full transparency (per frame,
+so a keyframed shadow color stays correct). When OFF, transparent pixels
+are flattened over the **background color** instead. JPEG and MP4 have no
+alpha and always flatten over the background color. Stored in presets.
+
+**Background fill** — a Palette-tab toggle plus color for sources with
+transparency: transparent source pixels are composited over the chosen
+color *before* dithering, so they take part in the dither like normal
+pixels — visible in the viewport and in every export, and the extracted
+image palette samples the filled image so the fill color is represented.
+Stored in presets and part of the processing cache key.
 
 **Sidebar tabs** — a vertical icon rail (local lucide icons) next to the
 sidebar switches between five tabs — Import, Dither (which carries both
@@ -323,7 +332,8 @@ with `Ctrl+Z`, and a marker drag collapses into a single undo step (drag
 coalescing). Shortcuts: `Ctrl+Z`,
 `Ctrl+Shift+Z` / `Ctrl+Y`, `Space` play/pause, `+`/`-` zoom, `0` fit,
 `1` 100%, `←`/`→` frame step, hold `C` original. Shortcuts are suppressed
-while typing in inputs.
+while typing in inputs. The full list is shown in the About dialog
+(Keyboard shortcuts section).
 
 ## Limitations / future work
 
@@ -369,15 +379,21 @@ while typing in inputs.
   Dot Diffusion follows Knuth's class matrix faithfully.
 - **Animated GIF/WebP import needs the ImageDecoder API** (Chrome 94+ and
   Electron have it); without it a GIF loads as a single still frame. GIF
-  delays of 0 are treated as the conventional 10 fps.
+  delays of 0 are treated as the conventional 10 fps. GIF delays only have
+  centisecond precision, so the measured rate snaps to the nearest common
+  frame rate with a wider tolerance (a 30 fps GIF is stored with 3 cs
+  delays = 33.3 fps and imports as 30 fps / correct duration); a true
+  24 fps GIF is indistinguishable from 25 fps in the file and imports
+  as 25.
 - **TIFF import is not supported** — browsers cannot decode TIFF natively
   and a decoder library would outweigh its use here; convert to PNG first.
   PNG/JPG/WebP/BMP/GIF decode natively.
-- **Transparent export knocks out the exact shadow color** (mono mode
-  only) — grey-level ramps keep their intermediate tones opaque, and
-  image-palette mode has no single background color, so the toggle is
-  disabled there. GIF transparency is 1-bit (fully on/off, as the format
-  allows); MP4/JPEG exports stay opaque.
+- **The mono knock-out matches the exact shadow color** — grey-level
+  ramps keep their intermediate tones opaque; in image-palette mode only
+  the source's own transparency is preserved (there is no single
+  background color to knock out). GIF transparency is 1-bit (fully
+  on/off, as the format allows); MP4/JPEG always flatten over the
+  background color.
 - **Effect enable toggles are not keyframable** (a judgment call on
   "where practical"): hard on/off pops mid-animation read as glitches, and
   every effect fades cleanly by animating its strength to 0 instead —

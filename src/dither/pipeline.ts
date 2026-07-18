@@ -38,6 +38,21 @@ export function processImage(src: RawImage, s: PipelineSettings): RawImage {
   const { width, height } = src
   const data = new Uint8ClampedArray(src.data)
 
+  // Optional background fill: composite transparent source pixels over
+  // the background color first, so they dither like normal pixels.
+  if (s.bgFillOn) {
+    const [br, bg, bb] = hexToRgb(s.bgColor)
+    for (let i = 0; i < data.length; i += 4) {
+      const a = data[i + 3]
+      if (a === 255) continue
+      const t = a / 255
+      data[i] = data[i] * t + br * (1 - t)
+      data[i + 1] = data[i + 1] * t + bg * (1 - t)
+      data[i + 2] = data[i + 2] * t + bb * (1 - t)
+      data[i + 3] = 255
+    }
+  }
+
   applyToneLut(data, s)
   applyEffects(data, width, height, s)
 
@@ -56,7 +71,13 @@ export function processImage(src: RawImage, s: PipelineSettings): RawImage {
 
 /* ---------- Tone adjustments ---------- */
 
-function applyToneLut(data: Uint8ClampedArray, s: PipelineSettings): void {
+/** Exported: palette extraction (App) runs the same LUT over its
+ *  sample so extracted palettes match the adjusted image — without
+ *  this, inverting an image would still yield the original palette. */
+export function applyToneLut(
+  data: Uint8ClampedArray,
+  s: Pick<PipelineSettings, 'brightness' | 'contrast' | 'gamma' | 'invert'>,
+): void {
   const lut = new Uint8ClampedArray(256)
   const bright = s.brightness * 1.275 // map ±100 → ±127.5
   const contrast = 1 + s.contrast / 100 // 0..2

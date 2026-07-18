@@ -74,9 +74,11 @@ interface PanelProps {
   /** Set while the eyedropper overlay is active (its clicks land
    *  outside the popover and must not close it). */
   onEyedropperActive: (active: boolean) => void
+  /** Open above the swatch (when there is no room below). */
+  up?: boolean
 }
 
-function ColorPickerPanel({ value, onChange, onEyedropperActive }: PanelProps) {
+function ColorPickerPanel({ value, onChange, onEyedropperActive, up }: PanelProps) {
   // HSV is the working model — it keeps hue/saturation stable while the
   // value passes through greys, where RGB alone loses that information.
   const [hsv, setHsv] = useState<Hsv>(() => rgbToHsv(hexToRgb(value)))
@@ -189,7 +191,7 @@ function ColorPickerPanel({ value, onChange, onEyedropperActive }: PanelProps) {
   }
 
   return (
-    <div className="cpick" role="dialog" aria-label="Color picker">
+    <div className={`cpick${up ? ' cpick--up' : ''}`} role="dialog" aria-label="Color picker">
       {/* saturation / value field */}
       <div
         className="cpick-sv"
@@ -289,8 +291,28 @@ export function ColorSwatchPicker({
   swatchClass,
 }: ColorSwatchPickerProps) {
   const [open, setOpen] = useState(false)
+  const [openUp, setOpenUp] = useState(false)
   const rootRef = useRef<HTMLSpanElement>(null)
   const eyedropperActive = useRef(false)
+
+  const toggleOpen = () => {
+    if (!open && rootRef.current) {
+      // Flip the popover above the swatch when it would be cut off
+      // below — by the window or by a scrolling ancestor (the sidebar
+      // clips its overflow, so deep rows would hide the panel).
+      let clipBottom = window.innerHeight
+      for (let node = rootRef.current.parentElement; node; node = node.parentElement) {
+        const oy = getComputedStyle(node).overflowY
+        if (oy === 'auto' || oy === 'scroll' || oy === 'hidden') {
+          clipBottom = Math.min(clipBottom, node.getBoundingClientRect().bottom)
+        }
+      }
+      const PANEL_H = 260
+      const rect = rootRef.current.getBoundingClientRect()
+      setOpenUp(rect.bottom + PANEL_H > clipBottom && rect.top - PANEL_H > 0)
+    }
+    setOpen((o) => !o)
+  }
 
   // Close on outside pointerdown / Escape. The eyedropper overlay makes
   // every click "outside", so it suspends outside-closing while active.
@@ -321,11 +343,12 @@ export function ColorSwatchPicker({
         title="Open color picker"
         aria-label={ariaLabel}
         aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
+        onClick={toggleOpen}
       />
       {open && (
         <ColorPickerPanel
           value={value}
+          up={openUp}
           onChange={onChange}
           onEyedropperActive={(active) => {
             eyedropperActive.current = active

@@ -125,6 +125,10 @@ export interface DitherSettings {
   paletteMode: PaletteMode
   /** Color interpretation mode (current palette vs legacy RGB levels). */
   colorMapping: ColorMapping
+  /** Fill transparent source pixels with `bgColor` before dithering
+   *  (viewport + every export). Off = source alpha passes through. */
+  bgFillOn: boolean
+  bgColor: string
   /** Mono palette: color used for highlights (bright pixels). */
   lightColor: string
   /** Mono palette: color used for shadows (dark pixels). */
@@ -177,6 +181,8 @@ export const DEFAULT_SETTINGS: DitherSettings = {
   greyLevels: 2,
   paletteMode: 'mono',
   colorMapping: 'current',
+  bgFillOn: false,
+  bgColor: '#071318',
   lightColor: '#e8f4f8',
   darkColor: '#071318',
   paletteSize: 8,

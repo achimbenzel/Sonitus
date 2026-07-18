@@ -230,6 +230,9 @@
 [data-theme='xp'] .overlay{background:rgba(60,60,50,.45)}
 [data-theme='xp'] .colorfield-hexinput,[data-theme='xp'] .cpick-field input{
   background:#fff;color:#1a1a1a;border-color:#7f9db9;box-shadow:none}
+/* The header sits on the blue title bar: the logo matches the white
+   brand text there; everywhere else (About, empty state) stays blue. */
+[data-theme='xp'] .topbar-logo{background-color:#fff}
 [data-theme='xp'] .vp-chipgroup,[data-theme='xp'] .viewport-hint,[data-theme='xp'] .split-label{
   background:rgba(236,233,216,.92);backdrop-filter:none}
 [data-theme='xp'] .iconbtn:hover:not(:disabled){background:#cfe0f8;border-color:#7f9db9;

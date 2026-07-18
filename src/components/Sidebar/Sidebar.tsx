@@ -401,6 +401,20 @@ export function Sidebar({
           checked={settings.invert}
           onChange={(v) => update({ invert: v })}
         />
+        <ToggleRow
+          label="Background fill"
+          checked={settings.bgFillOn}
+          onChange={(v) => update({ bgFillOn: v })}
+        />
+        <ColorField
+          label="Background"
+          value={settings.bgColor}
+          disabled={!settings.bgFillOn}
+          onChange={(v) => update({ bgColor: v })}
+        />
+        <div className="fxnote">
+          Fills transparent source pixels with a color before dithering
+        </div>
 
         <ColorField
           label="Highlight"
@@ -533,13 +547,14 @@ export function Sidebar({
         <ToggleRow
           label="Transparent background"
           checked={settings.exportTransparent}
-          disabled={!mono}
           onChange={(v) => update({ exportTransparent: v })}
         />
         <div className="fxnote">
-          {mono
-            ? 'Shadow pixels export as transparency (PNG, sequence, SVG)'
-            : 'Transparency needs Mono palette mode'}
+          {settings.exportTransparent
+            ? mono
+              ? 'Source alpha is kept; shadow pixels also export as transparency'
+              : 'Transparent source pixels stay transparent (PNG, sequence, SVG, GIF)'
+            : 'Transparent pixels are flattened over the background color'}
         </div>
         <div className="import-meta" style={{ marginTop: 0 }}>
           Output size: <b>

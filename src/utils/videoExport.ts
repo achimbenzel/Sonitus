@@ -14,7 +14,7 @@ import { zipSync } from 'fflate'
 import { stampPngBytes } from './pngMeta'
 import type { DitherSettings, SourceFrame } from '../types'
 import { PRIORITY, ProcessingEngine } from '../engine/ProcessingEngine'
-import { downloadBlob, knockOutColor, wantsTransparency } from './export'
+import { downloadBlob, flattenCanvas, knockOutColor, wantsFlatten, wantsTransparency } from './export'
 
 export interface AnimationExportOptions {
   engine: ProcessingEngine
@@ -132,7 +132,10 @@ export async function exportMp4(opts: AnimationExportOptions): Promise<void> {
   const frameDurUs = Math.round(1_000_000 / fps)
   for (let i = 0; i < totalFrames; i++) {
     if (handle.cancelled || encoderError) break
-    await renderFrameInto(engine, frames, i, settingsAt(i), canvas)
+    const s = settingsAt(i)
+    await renderFrameInto(engine, frames, i, s, canvas)
+    // MP4 has no alpha — composite over the background color.
+    flattenCanvas(canvas, s.bgColor)
     const vf = new VideoFrame(canvas, {
       timestamp: i * frameDurUs,
       duration: frameDurUs,
@@ -175,6 +178,7 @@ export async function exportGif(opts: AnimationExportOptions): Promise<void> {
     const s = settingsAt(i)
     await renderFrameInto(engine, frames, i, s, canvas)
     if (wantsTransparency(s)) knockOutColor(canvas, s.darkColor)
+    if (wantsFlatten(s)) flattenCanvas(canvas, s.bgColor)
     const ctx = canvas.getContext('2d', { willReadFrequently: true })!
     const { data, width, height } = ctx.getImageData(0, 0, canvas.width, canvas.height)
     // Any alpha (source transparency or the knocked-out shadow color)
@@ -234,6 +238,7 @@ export async function exportPngSequence(opts: AnimationExportOptions): Promise<v
     await renderFrameInto(engine, frames, i, s, canvas)
     // Knocked out per frame: a keyframed shadow color stays correct.
     if (wantsTransparency(s)) knockOutColor(canvas, s.darkColor)
+    if (wantsFlatten(s)) flattenCanvas(canvas, s.bgColor)
     const blob = await canvas.convertToBlob({ type: 'image/png' })
     files[`frame_${String(i + 1).padStart(4, '0')}.png`] = stampPngBytes(
       new Uint8Array(await blob.arrayBuffer()),

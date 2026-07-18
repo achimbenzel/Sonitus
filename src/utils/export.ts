@@ -38,6 +38,21 @@ export function wantsTransparency(settings: DitherSettings): boolean {
   return settings.exportTransparent && settings.paletteMode === 'mono'
 }
 
+/** True when alpha-capable exports should drop source transparency and
+ *  flatten over the background color instead. */
+export function wantsFlatten(settings: DitherSettings): boolean {
+  return !settings.exportTransparent
+}
+
+/** Composite a canvas over a solid background color, in place. */
+export function flattenCanvas(canvas: OffscreenCanvas, hex: string): void {
+  const ctx = canvas.getContext('2d')!
+  ctx.globalCompositeOperation = 'destination-over'
+  ctx.fillStyle = hex
+  ctx.fillRect(0, 0, canvas.width, canvas.height)
+  ctx.globalCompositeOperation = 'source-over'
+}
+
 /** Make every pixel that exactly matches `hex` fully transparent.
  *  Dithered output uses exact palette colors, so exact matching is
  *  reliable — only the shadow/background level is affected. */
@@ -65,20 +80,17 @@ export async function exportStill(
   const bmp = await engine.getProcessed(frame, settings, PRIORITY.EXPORT)
   const canvas = scaleToCanvas(bmp, settings)
   if (format === 'jpeg') {
-    // JPEG has no alpha — composite over the shadow color (mono) or black.
-    const flat = new OffscreenCanvas(canvas.width, canvas.height)
-    const ctx = flat.getContext('2d')!
-    ctx.fillStyle = settings.paletteMode === 'mono' ? settings.darkColor : '#000000'
-    ctx.fillRect(0, 0, flat.width, flat.height)
-    ctx.drawImage(canvas, 0, 0)
+    // JPEG has no alpha — composite over the background color.
+    flattenCanvas(canvas, settings.bgColor)
     const blob = await stampJpegDpi(
-      await flat.convertToBlob({ type: 'image/jpeg', quality: 0.95 }),
+      await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.95 }),
       settings.dpi,
     )
     downloadBlob(blob, `${baseName(frame)}_dithered.jpg`)
     return
   }
   if (wantsTransparency(settings)) knockOutColor(canvas, settings.darkColor)
+  if (wantsFlatten(settings)) flattenCanvas(canvas, settings.bgColor)
   const blob = await stampPngBlob(await canvas.convertToBlob({ type: 'image/png' }), settings.dpi)
   downloadBlob(blob, `${baseName(frame)}_dithered.png`)
 }
@@ -161,7 +173,15 @@ export async function exportSvg(
       if (raw.data[i] === r && raw.data[i + 1] === g && raw.data[i + 2] === b) raw.data[i + 3] = 0
     }
   }
-  const svg = rawImageToSvg(raw, settings.pixelScale, settings.dpi)
+  let svg = rawImageToSvg(raw, settings.pixelScale, settings.dpi)
+  if (wantsFlatten(settings)) {
+    // No transparency wanted: put a full-size background rect behind
+    // the vectorized runs (transparent areas show it through).
+    svg = svg.replace(
+      /(shape-rendering="crispEdges">)/,
+      `$1\n<rect width="${raw.width}" height="${raw.height}" fill="${settings.bgColor}"/>`,
+    )
+  }
   downloadBlob(new Blob([svg], { type: 'image/svg+xml' }), `${baseName(frame)}_dithered.svg`)
 }
 

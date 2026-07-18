@@ -9,6 +9,20 @@ interface AboutModalProps {
   onClose: () => void
 }
 
+/** Keys joined with `sep`: '+' = pressed together, '/' = either key. */
+const SHORTCUTS: { keys: string[]; sep?: '+' | '/'; action: string }[] = [
+  { keys: ['Space'], action: 'Play / pause the timeline' },
+  { keys: ['←', '→'], sep: '/', action: 'Step one frame back / forward' },
+  { keys: ['Ctrl', 'Z'], action: 'Undo' },
+  { keys: ['Ctrl', 'Shift', 'Z'], action: 'Redo (also Ctrl+Y)' },
+  { keys: ['+', '−'], sep: '/', action: 'Zoom the viewport in / out' },
+  { keys: ['0'], action: 'Fit the image to the viewport' },
+  { keys: ['1'], action: 'Zoom to 100%' },
+  { keys: ['C'], action: 'Hold to show the original image' },
+  { keys: ['Del'], action: 'Delete the selected keyframe' },
+  { keys: ['Esc'], action: 'Close dialogs, menus and pickers' },
+]
+
 const THIRD_PARTY = [
   { name: 'react / react-dom', license: 'MIT', role: 'UI framework' },
   { name: 'fflate', license: 'MIT', role: 'ZIP creation for sequence export' },
@@ -33,6 +47,35 @@ export function AboutModal({ onClose }: AboutModalProps) {
         A professional, fully offline image dithering studio for single images, image
         sequences and MP4 video frames. All processing happens locally in your browser —
         nothing is uploaded anywhere.
+      </p>
+
+      <h4 className="modal-subhead">Keyboard shortcuts</h4>
+      <table className="about-table about-table--keys">
+        <thead>
+          <tr>
+            <th>Keys</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {SHORTCUTS.map((s) => (
+            <tr key={s.action}>
+              <td className="about-keys">
+                {s.keys.map((k, i) => (
+                  <span key={k}>
+                    {i > 0 && <span className="key-sep">{s.sep ?? '+'}</span>}
+                    <kbd className="key">{k}</kbd>
+                  </span>
+                ))}
+              </td>
+              <td>{s.action}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="modal-note">
+        On macOS, use Cmd instead of Ctrl. Double-click a slider value to reset it
+        to its default.
       </p>
 
       <h4 className="modal-subhead">App license</h4>

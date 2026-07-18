@@ -141,7 +141,10 @@ export async function decodeAnimatedImage(
       onProgress((i + 1) / total)
     }
     const measured = totalUs > 0 ? (frames.length * 1e6) / totalUs : NaN
-    const fps = normalizeFps(measured)
+    // GIF frame delays only have centisecond precision: a 30fps clip is
+    // stored with 3cs delays and measures as 33.3fps. The wider snap
+    // window maps those back onto the real rate (33.3 → 30).
+    const fps = normalizeFps(measured, 0.15)
     return {
       frames,
       fps: fps ?? FALLBACK_VIDEO_FPS,
@@ -197,13 +200,16 @@ const COMMON_FPS = [12, 15, 24, 25, 30, 48, 50, 60]
 export const FALLBACK_VIDEO_FPS = 12
 
 /** Snap a measured rate to the nearest common one when plausible and
- *  clamp to the timeline's 1–60 range. */
-function normalizeFps(measured: number): number | null {
+ *  clamp to the timeline's 1–60 range. `tolerance` is the relative
+ *  snap distance; GIF delays are quantized to whole centiseconds
+ *  (30fps is stored as 3cs = 33.3fps), so animated images need a
+ *  wider window than the default. */
+function normalizeFps(measured: number, tolerance = 0.08): number | null {
   if (!Number.isFinite(measured) || measured <= 0) return null
   const nearest = COMMON_FPS.reduce((p, c) =>
     Math.abs(c - measured) < Math.abs(p - measured) ? c : p,
   )
-  const fps = Math.abs(nearest - measured) / measured <= 0.08 ? nearest : Math.round(measured)
+  const fps = Math.abs(nearest - measured) / measured <= tolerance ? nearest : Math.round(measured)
   return Math.min(60, Math.max(1, fps))
 }
 
