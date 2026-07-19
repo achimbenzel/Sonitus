@@ -13,8 +13,6 @@ import {
   Palette as PaletteIcon,
   Save,
   Sparkles,
-  Trash2,
-  Wand2,
   X,
 } from 'lucide-react'
 import type { DitherSettings, EffectId, ExportKind, KeyframableParam, ProjectKind } from '../../types'
@@ -26,20 +24,17 @@ import { ColorField } from '../ui/ColorField'
 import { KeyframeControl } from './controls'
 import { NumberField } from '../ui/NumberField'
 import { PaletteEditor } from './PaletteEditor'
-import { ANIM_PRESETS, type AnimPreset } from '../../keyframes/animPresets'
-import { PARAM_LABELS } from '../../keyframes/keyframes'
 
 const DPI_PRESETS = [72, 96, 150, 200, 300, 600]
 
 /* Icon-rail tabs: exactly one sidebar tab is visible at a time.
    The Dither tab carries both the Dither and Tone sections. */
-type SideTab = 'import' | 'dither' | 'effects' | 'palette' | 'animate' | 'export'
+type SideTab = 'import' | 'dither' | 'effects' | 'palette' | 'export'
 const SIDE_TABS: { id: SideTab; label: string; Icon: typeof FolderInput }[] = [
   { id: 'import', label: 'Import', Icon: FolderInput },
   { id: 'dither', label: 'Dither', Icon: LayoutGrid },
   { id: 'effects', label: 'Effects', Icon: Sparkles },
   { id: 'palette', label: 'Palette', Icon: PaletteIcon },
-  { id: 'animate', label: 'Animate', Icon: Wand2 },
   { id: 'export', label: 'Export', Icon: Download },
 ]
 const TAB_KEY = 'sonitus.sideTab'
@@ -93,12 +88,6 @@ interface SidebarProps {
   /** Inline export progress (sidebar-only feedback). */
   exportProgress: { label: string; value: number | null } | null
   onCancelExport: () => void
-  /** Apply an animation preset (generates timeline keyframes). */
-  onApplyAnimPreset: (preset: AnimPreset) => void
-  /** Remove every keyframe from the timeline (undoable). */
-  onClearKeyframes: () => void
-  /** True when any parameter has keyframes. */
-  hasKeyframes: boolean
 }
 
 const KIND_LABEL: Record<ProjectKind, string> = {
@@ -130,9 +119,6 @@ export function Sidebar({
   frameSize,
   exportProgress,
   onCancelExport,
-  onApplyAnimPreset,
-  onClearKeyframes,
-  hasKeyframes,
 }: SidebarProps) {
   const imageInput = useRef<HTMLInputElement>(null)
   const sequenceInput = useRef<HTMLInputElement>(null)
@@ -515,44 +501,6 @@ export function Sidebar({
             </button>
           </div>
         )}
-      </Section>
-      )}
-
-      {/* ---------- ANIMATE ---------- */}
-      {tab === 'animate' && (
-      <Section label="Animate">
-        <div className="fxnote" style={{ marginTop: 0 }}>
-          Presets generate regular timeline keyframes — drag, retime
-          or delete them there. Applying is one undo step.
-        </div>
-        {ANIM_PRESETS.map((p) => (
-          <div className="animpre" key={p.id}>
-            <div className="animpre-head">
-              <span className="animpre-name">{p.name}</span>
-              <button
-                className="btn btn--sm"
-                onClick={() => onApplyAnimPreset(p)}
-                title={`Generate "${p.name}" keyframes on the timeline`}
-              >
-                <Wand2 size={13} /> Apply
-              </button>
-            </div>
-            <div className="animpre-desc">{p.description}</div>
-            <div className="animpre-params">
-              Animates: {p.params.map((prm) => PARAM_LABELS[prm]).join(', ')}
-            </div>
-          </div>
-        ))}
-        <div className="export-btns" style={{ marginTop: 6 }}>
-          <button
-            className="btn btn--sm"
-            disabled={!hasKeyframes}
-            onClick={onClearKeyframes}
-            title="Remove every keyframe from the timeline (undoable)"
-          >
-            <Trash2 size={13} /> Clear all keyframes
-          </button>
-        </div>
       </Section>
       )}
 

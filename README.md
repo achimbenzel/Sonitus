@@ -81,7 +81,7 @@ src/
 │   ├── TopBar/                 desktop-style header: file/preset/history actions
 │   ├── Viewport/               canvas, zoom/pan, compare modes, drag&drop
 │   ├── Sidebar/                icon rail + tabbed sections (Import, Dither,
-│   │                           Tone, Effects, Palette, Animate, Export)
+│   │                           Tone, Effects, Palette, Export)
 │   ├── Timeline/               always-visible ruler timeline: ticks, playhead,
 │   │                           scrub, Ctrl+wheel zoom, keyframe markers, thumbs
 │   ├── ProgressOverlay/        import/export progress + cancel
@@ -290,23 +290,12 @@ image palette samples the filled image so the fill color is represented.
 Stored in presets and part of the processing cache key.
 
 **Sidebar tabs** — a vertical icon rail (local lucide icons) next to the
-sidebar switches between six tabs — Import, Dither (which carries both
-the Dither and Tone sections), Effects, Palette, Animate, Export — one at
-a time, with the active tab highlighted and remembered across sessions.
-Grey levels and Invert live in the Palette tab (they are palette
-properties); Grey levels stays keyframable. The 40-algorithm dropdown has
-a built-in search field for quick filtering.
-
-**Animation presets** (Animate tab) — one-click animated dither looks:
-Threshold pulse, Pixel crunch, Glow bloom, Noise storm, Strobe flicker
-(hold easing), Color drift (hue rotation of the mono highlight color) and
-Focus pull. A preset generates **ordinary timeline keyframes** spread
-across the current timeline length — they are exactly as draggable,
-easing-editable and deletable as hand-made keyframes, and applying a
-preset is a single undo step (its settings tweaks, e.g. enabling the Glow
-effect, land in the same step). A preset replaces only the keyframes of
-the parameters it animates, so presets can be layered; "Clear all
-keyframes" removes everything (undoable).
+sidebar switches between five tabs — Import, Dither (which carries both
+the Dither and Tone sections), Effects, Palette, Export — one at a time,
+with the active tab highlighted and remembered across sessions. Grey
+levels and Invert live in the Palette tab (they are palette properties);
+Grey levels stays keyframable. The 40-algorithm dropdown has a built-in
+search field for quick filtering.
 
 **Presets** — full parameter set (incl. FPS/loop, algorithm +
 algorithm-specific options like the screen angle, DPI, effect chain state,

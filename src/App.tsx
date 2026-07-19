@@ -26,7 +26,6 @@ import {
   setKeyframeEasing,
 } from './keyframes/keyframes'
 import { generatePalette, hexToRgb, rgbToHex } from './dither/palette'
-import type { AnimPreset } from './keyframes/animPresets'
 import { applyToneLut } from './dither/pipeline'
 import { buildImageFrames, decodeAnimatedImage, extractVideoFrames } from './utils/imageLoad'
 import { exportPaletteFile, mergePalettes, parsePaletteFile } from './utils/palettes'
@@ -373,31 +372,6 @@ export default function App() {
     },
     [updateKeyframes],
   )
-
-  /* ---------- animation presets ---------- */
-
-  /** One undo step: the preset's settings tweaks (e.g. enabling an
-   *  effect) land together with its generated keyframes. Only the
-   *  animated params' keyframes are replaced — others are kept. */
-  const applyAnimPreset = useCallback(
-    (preset: AnimPreset) => {
-      const st = stateRef.current
-      const duration = st.totalFrames / st.fps
-      const built = preset.build(duration, st.fps, st.settings)
-      replaceAll({
-        settings: { ...st.settings, ...preset.settings },
-        keyframes: { ...st.keyframes, ...built },
-      })
-      showToast(`"${preset.name}" applied — edit or delete its keyframes in the timeline`)
-    },
-    [replaceAll, showToast],
-  )
-
-  const clearAllKeyframes = useCallback(() => {
-    replaceAll({ settings: stateRef.current.settings, keyframes: {} })
-    setSelectedKf(null)
-    showToast('All keyframes removed (Ctrl+Z restores them)')
-  }, [replaceAll, showToast])
 
   /** FPS changes keep keyframes at their time positions: frame indices
    *  are recomputed everywhere (incl. undo history) without creating
@@ -977,9 +951,6 @@ export default function App() {
           frameSize={frame ? { width: frame.width, height: frame.height } : null}
           exportProgress={exportProgress}
           onCancelExport={cancelExport}
-          onApplyAnimPreset={applyAnimPreset}
-          onClearKeyframes={clearAllKeyframes}
-          hasKeyframes={Object.values(keyframes).some((l) => l && l.length > 0)}
         />
       </div>
 
