@@ -3,7 +3,12 @@
 
 import { Modal } from '../ui/Modal'
 import { AppLogo } from '../ui/AppLogo'
+import confiniumUrl from '../../assets/confinium_logo.svg'
 import pkg from '../../../package.json'
+
+// Quoted for the same reason as AppLogo: production builds inline the
+// SVG as a data: URL with single quotes, which break unquoted url().
+const CONFINIUM_MASK = `url("${confiniumUrl}")`
 
 interface AboutModalProps {
   onClose: () => void
@@ -120,6 +125,15 @@ export function AboutModal({ onClose }: AboutModalProps) {
         Both families are bundled with the app together with their OFL license
         texts; no fonts are loaded from the internet.
       </p>
+
+      <div className="about-credit">
+        <span
+          aria-hidden
+          className="about-credit-logo"
+          style={{ WebkitMaskImage: CONFINIUM_MASK, maskImage: CONFINIUM_MASK }}
+        />
+        Made by Confinium
+      </div>
     </Modal>
   )
 }
