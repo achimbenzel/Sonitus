@@ -66,7 +66,54 @@ export function processImage(src: RawImage, s: PipelineSettings): RawImage {
   } else {
     ditherMono(data, width, height, s)
   }
+
+  applyReveal(data, width, height, s)
   return { data, width, height }
+}
+
+/* ---------- Dither-in reveal ----------
+   Post-dither wipe with a dithered dissolve edge: pixels ahead of the
+   sweep front turn fully transparent, pixels inside the softness band
+   drop out per-pixel against a Bayer-8 pattern — so the image "dithers
+   in" from the chosen direction as revealAmount animates 0 → 100.   */
+
+function applyReveal(
+  data: Uint8ClampedArray,
+  width: number,
+  height: number,
+  s: Pick<PipelineSettings, 'revealAmount' | 'revealDirection' | 'revealSoftness'>,
+): void {
+  const r = Math.min(100, Math.max(0, s.revealAmount)) / 100
+  if (r >= 1) return
+
+  // Per-pixel progress along the sweep, 0 (revealed first) .. 1 (last).
+  const mx = (width - 1) / 2
+  const my = (height - 1) / 2
+  const maxRadial = Math.hypot(mx, my) || 1
+  const progress: (x: number, y: number) => number = {
+    left: (x: number) => (width > 1 ? x / (width - 1) : 0),
+    right: (x: number) => (width > 1 ? 1 - x / (width - 1) : 0),
+    top: (_x: number, y: number) => (height > 1 ? y / (height - 1) : 0),
+    bottom: (_x: number, y: number) => (height > 1 ? 1 - y / (height - 1) : 0),
+    center: (x: number, y: number) => Math.hypot(x - mx, y - my) / maxRadial,
+    edges: (x: number, y: number) => 1 - Math.hypot(x - mx, y - my) / maxRadial,
+  }[s.revealDirection]
+
+  // Softness 0..100 → dissolve band as a fraction of the sweep span.
+  // The front travels through 1 + band so r=0 hides and r=1 shows all.
+  const band = Math.max(0.02, (Math.min(100, Math.max(0, s.revealSoftness)) / 100) * 0.6)
+  const front = r * (1 + band)
+  const bayer = getBayerMatrix(8)
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const m = (front - progress(x, y)) / band
+      if (m >= 1) continue
+      if (m <= 0 || m < bayer[(y % 8) * 8 + (x % 8)]) {
+        data[(y * width + x) * 4 + 3] = 0
+      }
+    }
+  }
 }
 
 /* ---------- Tone adjustments ---------- */

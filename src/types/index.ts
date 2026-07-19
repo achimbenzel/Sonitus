@@ -67,6 +67,10 @@ export type PaletteStyle =
   | 'contrast'
   | 'custom'
 
+/** Where the dither-in reveal sweeps from ('center' grows outward,
+ *  'edges' closes inward). */
+export type RevealDirection = 'left' | 'right' | 'top' | 'bottom' | 'center' | 'edges'
+
 /** Pre-dither effect identifiers, in their default chain order. */
 export type EffectId = 'blur' | 'sharpen' | 'edge' | 'glow' | 'noise' | 'posterize'
 
@@ -117,6 +121,13 @@ export interface DitherSettings {
   fxOrder: EffectId[]
   /** Halftone screen angle in degrees (screen-halftone only), 0..90. */
   screenAngle: number
+  /** Dither-in reveal: 0 = fully hidden, 100 = fully shown
+   *  (keyframable — animate 0 → 100 to dither the image in). */
+  revealAmount: number
+  /** Direction the reveal sweeps from. */
+  revealDirection: RevealDirection
+  /** Width of the dissolving dither edge, 0..100. */
+  revealSoftness: number
   invert: boolean
   /** Serpentine scanning (error diffusion only). */
   serpentine: boolean
@@ -176,6 +187,9 @@ export const DEFAULT_SETTINGS: DitherSettings = {
   fxPosterize: 6,
   fxOrder: [...DEFAULT_FX_ORDER],
   screenAngle: 45,
+  revealAmount: 100,
+  revealDirection: 'left',
+  revealSoftness: 25,
   invert: false,
   serpentine: true,
   greyLevels: 2,
@@ -223,6 +237,7 @@ export type KeyframableParam =
   | 'gamma'
   | 'threshold'
   | 'preBlur'
+  | 'revealAmount'
   | 'greyLevels'
   | 'pixelScale'
   | 'lightColor'

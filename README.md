@@ -226,9 +226,20 @@ The playhead range is [0, totalFrames]: position `totalFrames` is the exact
 end (5 s × 12 fps = 60 frames, end = 5.00 s), and ruler, counter, playhead
 and export all share this mapping.
 
+**Dither-in reveal** — the Dither tab's "Dither in" slider (0 = hidden,
+100 = fully shown, keyframable) sweeps the dithered image in from a
+chosen direction: Left → Right, Right → Left, Top → Bottom, Bottom → Top,
+Center out or Edges in. The sweep front is not a hard line — pixels
+inside a configurable "Edge softness" band drop out per-pixel against a
+Bayer-8 pattern, so the image *dithers* in. Hidden pixels are fully
+transparent, composing naturally with the transparency/background-color
+export semantics (and the GIF/PNG-sequence/MP4 exporters bake the
+animation per frame). Keyframe it 0 → 100 on the timeline to get the
+classic dither-in animation.
+
 **Keyframes** — animate brightness, contrast, gamma, threshold, pre-blur,
-grey levels, resolution, pixel scale, the effect strengths and both mono
-palette colors. Keyframes are only ever created or updated
+the dither-in reveal, grey levels, resolution, pixel scale, the effect
+strengths and both mono palette colors. Keyframes are only ever created or updated
 **explicitly**: changing a parameter is a live edit (discarded when the
 playhead moves); the diamond button creates a keyframe (no keyframe here),
 saves the changed value (amber "dirty" state) or removes the keyframe

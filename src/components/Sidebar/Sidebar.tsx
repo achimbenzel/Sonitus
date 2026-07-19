@@ -331,6 +331,46 @@ export function Sidebar({
       </Section>
       )}
 
+      {/* ---------- DITHER IN (reveal, shares the Dither tab) ---------- */}
+      {tab === 'dither' && (
+      <Section label="Dither in">
+        <SliderRow
+          label="Dither in"
+          value={settings.revealAmount}
+          min={0}
+          max={100}
+          resetValue={d.revealAmount}
+          unit="%"
+          kf={kfControl('revealAmount')}
+          onChange={(v) => updateParam('revealAmount', v)}
+        />
+        <SelectRow
+          label="Direction"
+          value={settings.revealDirection}
+          options={[
+            { value: 'left', label: 'Left → Right' },
+            { value: 'right', label: 'Right → Left' },
+            { value: 'top', label: 'Top → Bottom' },
+            { value: 'bottom', label: 'Bottom → Top' },
+            { value: 'center', label: 'Center out' },
+            { value: 'edges', label: 'Edges in' },
+          ]}
+          onChange={(v) => update({ revealDirection: v as DitherSettings['revealDirection'] })}
+        />
+        <SliderRow
+          label="Edge softness"
+          value={settings.revealSoftness}
+          min={0}
+          max={100}
+          resetValue={d.revealSoftness}
+          onChange={(v) => update({ revealSoftness: v })}
+        />
+        <div className="fxnote">
+          Keyframe "Dither in" from 0 to 100 to sweep the image in
+        </div>
+      </Section>
+      )}
+
       {/* ---------- EFFECTS (pre-dither chain, user-ordered) ---------- */}
       {tab === 'effects' && (
       <Section label="Effects">

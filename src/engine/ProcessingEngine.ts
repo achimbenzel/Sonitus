@@ -114,6 +114,9 @@ export class ProcessingEngine {
       s.paletteMode, s.colorMapping, s.lightColor, s.darkColor, s.paletteSize,
       s.resolvedPalette?.join(',') ?? '',
       s.screenAngle,
+      s.revealAmount,
+      s.revealDirection,
+      s.revealSoftness,
       s.bgFillOn ? s.bgColor : 'off',
       // Pre-dither effect chain (order matters; strength only while enabled).
       s.fxOrder.join(','),

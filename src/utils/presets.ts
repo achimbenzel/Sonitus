@@ -81,6 +81,16 @@ function hex(obj: Record<string, unknown>, key: string, fallback: string): strin
   return v
 }
 
+const REVEAL_DIRECTIONS = ['left', 'right', 'top', 'bottom', 'center', 'edges'] as const
+
+function revealDirection(obj: Record<string, unknown>): DitherSettings['revealDirection'] {
+  const v = obj.revealDirection ?? DEFAULT_SETTINGS.revealDirection
+  if (typeof v !== 'string' || !REVEAL_DIRECTIONS.includes(v as (typeof REVEAL_DIRECTIONS)[number])) {
+    throw new Error(`revealDirection must be one of ${REVEAL_DIRECTIONS.join(', ')}`)
+  }
+  return v as DitherSettings['revealDirection']
+}
+
 export interface ParsedPreset {
   settings: DitherSettings
   fps: number
@@ -159,6 +169,9 @@ export function parsePreset(json: string): ParsedPreset {
     // Unknown/missing entries are repaired; old presets get the default.
     fxOrder: normalizeFxOrder(obj.fxOrder),
     screenAngle: num(obj, 'screenAngle', 0, 90, d.screenAngle),
+    revealAmount: num(obj, 'revealAmount', 0, 100, d.revealAmount),
+    revealDirection: revealDirection(obj),
+    revealSoftness: num(obj, 'revealSoftness', 0, 100, d.revealSoftness),
     invert: bool(obj, 'invert', d.invert),
     serpentine: bool(obj, 'serpentine', d.serpentine),
     greyLevels: Math.round(num(obj, 'greyLevels', 2, 16, d.greyLevels)),
